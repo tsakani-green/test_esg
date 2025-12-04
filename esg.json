@@ -1,0 +1,832 @@
+# main.py
+import os
+import io
+import json
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
+from dotenv import load_dotenv
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+load_dotenv()
+
+# ================== CONFIG ==================
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL_ESG", "gpt-4o-mini")  # default model
+
+FRONTEND_ORIGINS_ENV = os.getenv("FRONTEND_ORIGINS")
+if FRONTEND_ORIGINS_ENV:
+    ALLOWED_ORIGINS = [o.strip() for o in FRONTEND_ORIGINS_ENV.split(",")]
+else:
+    ALLOWED_ORIGINS = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "*",
+    ]
+
+# Optional OpenAI client (Chat Completions)
+try:
+    from openai import OpenAI
+
+    openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+except ImportError:
+    openai_client = None
+
+
+# ================== MODELS ==================
+class ESGInput(BaseModel):
+    company_name: str = "Demo Company"
+    period: str = "FY2024"
+    carbon_emissions_tons: float = 18500
+    energy_consumption_mwh: float = 1250
+    water_use_m3: float = 55000
+    waste_generated_tons: float = 180
+    social_score_raw: float = 78
+    governance_score_raw: float = 82
+
+
+class OperationalRecord(BaseModel):
+    """
+    Matches ONE row in your timeseries JSON array, e.g.:
+
+    {
+      "Date": "2022-01-01",
+      "Electricity_kWh": 1158,
+      "Fuel_L": 67,
+      "Water_kl": 19.25,
+      "Waste_Generated_kg": 167,
+      "Recycled_Waste_kg": 195,
+      "Employees": 60,
+      "Training_Hours": 37,
+      "Incidents": 1,
+      "Women_pct": 28.96,
+      "Youth_pct": 22.66,
+      "Governance_Trainings": 8
+    }
+    """
+
+    Date: str
+    Electricity_kWh: float = 0.0
+    Fuel_L: float = 0.0
+    Water_kl: float = 0.0
+    Waste_Generated_kg: float = 0.0
+    Recycled_Waste_kg: float = 0.0
+
+    Employees: Optional[int] = None
+    Training_Hours: float = 0.0
+    Incidents: int = 0
+    Women_pct: Optional[float] = None
+    Youth_pct: Optional[float] = None
+    Governance_Trainings: int = 0
+
+
+class ESGScores(BaseModel):
+    e_score: float
+    s_score: float
+    g_score: float
+    overall_score: float
+
+
+class ESGInsights(BaseModel):
+    overall: str
+    environmental: List[str]
+    social: List[str]
+    governance: List[str]
+
+
+class AnalyseResponse(BaseModel):
+    scores: ESGScores
+    insights: ESGInsights
+
+
+class PlatformOverview(BaseModel):
+    countries_supported: int
+    esg_reports_generated: int
+    compliance_accuracy: float
+    ai_support_mode: str
+
+
+class PillarInsightsResponse(BaseModel):
+    metrics: Dict[str, Any]
+    insights: List[str]
+
+
+class ESGDataMock(BaseModel):
+    summary: Dict[str, Any]
+    metrics: Dict[str, Any]
+    environmentalMetrics: Dict[str, Any]
+    socialMetrics: Dict[str, Any]
+    governanceMetrics: Dict[str, Any]
+
+
+class ESGDataResponse(BaseModel):
+    mockData: ESGDataMock
+    insights: List[str]
+
+
+# ================== APP ==================
+app = FastAPI(
+    title="AfricaESG.AI Backend",
+    version="1.2.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ================== GLOBAL STATE ==================
+DEFAULT_ESG_INPUT = ESGInput()
+last_esg_input: ESGInput = DEFAULT_ESG_INPUT
+last_scores: Optional[ESGScores] = None
+last_insights: Optional[ESGInsights] = None
+
+
+# ================== HELPER FUNCTIONS ==================
+def calculate_esg_scores(esg_input: ESGInput) -> ESGScores:
+    """
+    Basic scoring logic – adjust as needed.
+    """
+    # Environmental (lower emissions + lower energy = better)
+    e_base = 100 - (esg_input.carbon_emissions_tons / 300)
+    e_mod = 100 - (esg_input.energy_consumption_mwh / 25)
+    e_score = max(0, min(100, (e_base * 0.7 + e_mod * 0.3)))
+
+    # Social & Governance from raw
+    s_score = max(0, min(100, esg_input.social_score_raw))
+    g_score = max(0, min(100, esg_input.governance_score_raw))
+
+    overall_score = round((e_score + s_score + g_score) / 3, 1)
+
+    return ESGScores(
+        e_score=round(e_score, 1),
+        s_score=round(s_score, 1),
+        g_score=round(g_score, 1),
+        overall_score=overall_score,
+    )
+
+
+async def _call_openai_json(system_prompt: str, payload: Any, fallback: Any) -> Any:
+    """
+    Call OpenAI via Chat Completions and expect a JSON object back.
+    Uses response_format={'type': 'json_object'} so we can json.loads() directly.
+    """
+    if not openai_client or not OPENAI_API_KEY:
+        return fallback
+
+    try:
+        completion = openai_client.chat.completions.create(
+            model=OPENAI_MODEL,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(payload, indent=2)},
+            ],
+        )
+        text = completion.choices[0].message.content or ""
+        return json.loads(text)
+    except Exception as exc:
+        print("OpenAI JSON error:", exc)
+        return fallback
+
+
+async def _call_openai_lines(
+    system_prompt: str, payload: Any, fallback: List[str]
+) -> List[str]:
+    """
+    Call OpenAI via Chat Completions and return a list of cleaned lines.
+    Each line is one insight.
+    """
+    if not openai_client or not OPENAI_API_KEY:
+        return fallback
+
+    try:
+        completion = openai_client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(payload, indent=2)},
+            ],
+        )
+        text = completion.choices[0].message.content or ""
+        if not text:
+            return fallback
+
+        lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+
+        import re
+
+        cleaned: List[str] = []
+        for line in lines:
+            # Strip bullets / numbering like "- ", "1. "
+            line = re.sub(r"^[-•\d\.\s]+", "", line).strip()
+            if line:
+                cleaned.append(line)
+
+        return cleaned[:6] or fallback
+    except Exception as exc:
+        print("OpenAI lines error:", exc)
+        return fallback
+
+
+async def generate_esg_ai_insights(
+    esg_input: ESGInput, scores: ESGScores
+) -> ESGInsights:
+    default = ESGInsights(
+        overall=(
+            "ESG performance is stable with opportunities to improve renewables, "
+            "supplier diversity and governance integration into executive scorecards."
+        ),
+        environmental=[
+            "Carbon emissions remain material – prioritise energy efficiency and renewable projects at high-emitting sites.",
+            "Energy consumption can be linked to cost and carbon tax exposure for better capital allocation.",
+            "Consider a structured decarbonisation roadmap over the next 3–5 years.",
+        ],
+        social=[
+            "Social performance is positive, but supplier diversity can be strengthened with targeted SMME programmes.",
+            "Employee engagement should be monitored regularly through pulse surveys.",
+            "Community investments would benefit from clearer KPIs and outcome tracking.",
+        ],
+        governance=[
+            "Governance maturity is good – integrate ESG KPIs into Board and EXCO scorecards.",
+            "Ensure data privacy, ethics and compliance training are embedded across the organisation.",
+            "Align ESG risk registers with enterprise risk management and internal audit.",
+        ],
+    )
+
+    system_prompt = (
+        "You are an ESG reporting advisor supporting IFRS S1/S2 and TCFD-aligned disclosures "
+        "for African corporates. Given ESG inputs and scores, produce:\n"
+        "- A short overall narrative paragraph\n"
+        "- 3 bullet points for Environmental\n"
+        "- 3 bullet points for Social\n"
+        "- 3 bullet points for Governance\n"
+        "Return JSON with keys: overall, environmental, social, governance. "
+        "Each of environmental/social/governance should be an array of strings."
+    )
+
+    payload = {"input": esg_input.dict(), "scores": scores.dict()}
+    parsed = await _call_openai_json(system_prompt, payload, fallback=None)
+    if not parsed:
+        return default
+
+    return ESGInsights(
+        overall=parsed.get("overall", default.overall),
+        environmental=parsed.get("environmental", default.environmental),
+        social=parsed.get("social", default.social),
+        governance=parsed.get("governance", default.governance),
+    )
+
+
+async def generate_pillar_insights(
+    pillar: str, metrics: Dict[str, Any]
+) -> List[str]:
+    if pillar == "environmental":
+        fallback = [
+            "Focus energy efficiency projects on the highest-consuming periods or sites.",
+            "Link emission reductions to projected carbon tax savings.",
+            "Investigate waste streams with the highest tonnages for reduction opportunities.",
+            "Consider renewable PPAs or onsite solar to reduce reliance on grid electricity.",
+        ]
+        system_prompt = (
+            "You are an ESG analyst focusing ONLY on Environmental metrics (energy, emissions, waste). "
+            "Provide 4–6 concise insights for operations and sustainability teams in an African industrial context. "
+            "Return one insight per line, with no numbering."
+        )
+    elif pillar == "social":
+        fallback = [
+            "Supplier diversity is moderate – there is scope to grow spend with local SMMEs and black-owned suppliers.",
+            "Employee engagement appears healthy – sustain this with leadership visibility and continuous feedback loops.",
+            "Community programmes are active; strengthen their impact with clearer KPIs and linkages to core business.",
+            "Social metrics should be tracked at site level to highlight hotspots and success stories.",
+            "Integrate key social indicators into EXCO and Board reporting to maintain visibility.",
+        ]
+        system_prompt = (
+            "You are an ESG analyst focusing ONLY on Social metrics (supplier diversity, employee engagement, "
+            "community, human capital). Provide 4–6 concise insights for executives in an African corporate context. "
+            "Return one insight per line, no numbering."
+        )
+    else:
+        fallback = [
+            "Governance structures appear broadly sound – the next step is to integrate ESG KPIs into Board and EXCO scorecards.",
+            "Ensure that data privacy, ethics and anti-corruption controls are embedded and regularly tested.",
+            "Extend ESG screening into supplier onboarding and ongoing supply chain management.",
+            "Align ESG risks with enterprise risk management and internal audit plans.",
+        ]
+        system_prompt = (
+            "You are an ESG analyst focusing ONLY on Governance metrics (policies, compliance, ethics, supply chain). "
+            "Provide 4–6 concise insights for Board and executive audiences in an African corporate context. "
+            "Return one insight per line, no numbering."
+        )
+
+    return await _call_openai_lines(system_prompt, metrics, fallback=fallback)
+
+
+def build_environmental_metrics_from_input(
+    esg_input: ESGInput, scores: ESGScores
+) -> Dict[str, Any]:
+    """
+    Build simple time-series-style data for charts:
+    - energyUsage[]
+    - co2Emissions[]
+    - waste[]
+    """
+    periods = 6
+    base_energy_kwh = esg_input.energy_consumption_mwh * 1000
+    base_co2 = esg_input.carbon_emissions_tons
+
+    energy_usage = []
+    co2_emissions = []
+    waste = []
+
+    for i in range(periods):
+        factor = 0.8 + 0.05 * i
+        energy_usage.append(round(base_energy_kwh / periods * factor))
+        co2_emissions.append(round(base_co2 / periods * factor, 1))
+        waste.append(
+            round(esg_input.waste_generated_tons / periods * (0.9 + 0.02 * i))
+        )
+
+    return {
+        "energyUsage": energy_usage,
+        "co2Emissions": co2_emissions,
+        "waste": waste,
+    }
+
+
+def build_social_metrics_from_input(
+    esg_input: ESGInput, scores: ESGScores
+) -> Dict[str, Any]:
+    supplier_diversity = round(esg_input.social_score_raw * 0.25)
+    employee_engagement = round(esg_input.social_score_raw)
+    community_programs = 40
+    return {
+        "supplierDiversity": supplier_diversity,
+        "employeeEngagement": employee_engagement,
+        "communityPrograms": community_programs,
+    }
+
+
+def build_governance_metrics_from_input(
+    esg_input: ESGInput, scores: ESGScores
+) -> Dict[str, Any]:
+    corporate_governance = "Strong" if scores.g_score >= 80 else "Developing"
+    iso_compliance = "ISO 9001 Certified" if scores.g_score >= 75 else "In progress"
+    business_ethics = "High" if scores.g_score >= 85 else "Moderate"
+    return {
+        "corporateGovernance": corporate_governance,
+        "dataPrivacy": "Compliant",
+        "isoCompliance": iso_compliance,
+        "businessEthics": business_ethics,
+        "codeOfEthics": "Yes",
+        "informationSecurityPolicy": "Yes",
+        "supplierSustainabilityCompliance": 72,
+        "supplierAuditsCompleted": 58,
+        "supplierEsgCompliance": "Medium",
+        "totalGovernanceTrainings": 24,
+        "totalEnvironmentalTrainings": 18,
+        "totalComplianceFindings": 1 if scores.g_score >= 80 else 3,
+    }
+
+
+def build_summary_and_metrics(
+    esg_input: ESGInput, scores: ESGScores
+):
+    env_metrics = build_environmental_metrics_from_input(esg_input, scores)
+    soc_metrics = build_social_metrics_from_input(esg_input, scores)
+    gov_metrics = build_governance_metrics_from_input(esg_input, scores)
+
+    total_energy = sum(env_metrics["energyUsage"])
+    renewable_share = max(10, min(60, round(scores.e_score / 1.5)))
+
+    summary = {
+        "environmental": {
+            "totalEnergyConsumption": total_energy,
+            "renewableEnergyShare": renewable_share,
+            "carbonEmissions": esg_input.carbon_emissions_tons,
+        },
+        "social": {
+            "supplierDiversity": soc_metrics["supplierDiversity"],
+            "customerSatisfaction": scores.s_score,
+            "humanCapital": round((scores.s_score + scores.overall_score) / 2),
+        },
+        "governance": {
+            "corporateGovernance": gov_metrics["corporateGovernance"],
+            "iso9001Compliance": gov_metrics["isoCompliance"],
+            "businessEthics": gov_metrics["businessEthics"],
+            "totalGovernanceTrainings": gov_metrics["totalGovernanceTrainings"],
+            "totalEnvironmentalTrainings": gov_metrics["totalEnvironmentalTrainings"],
+            "totalComplianceFindings": gov_metrics["totalComplianceFindings"],
+        },
+    }
+
+    metrics = {
+        "carbonTax": round(esg_input.carbon_emissions_tons * 1500),
+        "taxAllowances": round(esg_input.carbon_emissions_tons * 1500 * 0.3),
+        "carbonCredits": round(esg_input.carbon_emissions_tons * 0.15),
+        "energySavings": round(total_energy * 0.12),
+    }
+
+    return summary, metrics, env_metrics, soc_metrics, gov_metrics
+
+
+def build_esg_input_from_timeseries(records: List[OperationalRecord]) -> ESGInput:
+    """
+    Aggregate the timeseries dataset (your JSON array) into a single ESGInput.
+
+    - Energy consumption (MWh) from Electricity_kWh
+    - Carbon emissions (tCO2e) from electricity + fuel using simple emission factors
+    - Water use (m3) from Water_kl
+    - Waste generated (tons) from Waste_Generated_kg
+    - Social & governance scores derived from training, diversity and incidents
+    """
+    if not records:
+        raise HTTPException(
+            status_code=400,
+            detail="Timeseries JSON is empty – expected at least one row.",
+        )
+
+    df = pd.DataFrame([r.dict() for r in records])
+
+    # --- Period / dates ---
+    try:
+        dt_series = pd.to_datetime(df["Date"], errors="coerce")
+        first_date = dt_series.min()
+        last_date = dt_series.max()
+        if pd.isna(first_date) or pd.isna(last_date):
+            period = "Imported timeseries"
+        else:
+            period = f"{first_date.date()} to {last_date.date()}"
+    except Exception:
+        period = "Imported timeseries"
+
+    # --- Energy & emissions ---
+    total_kwh = float(df["Electricity_kWh"].fillna(0).sum())
+    total_fuel_l = float(df["Fuel_L"].fillna(0).sum())
+
+    energy_mwh = total_kwh / 1000.0
+
+    # Simple emission factors (you can refine for your context)
+    GRID_EF_T_PER_KWH = 0.0009   # 0.9 kg CO2e / kWh -> 0.0009 tCO2e
+    FUEL_EF_T_PER_L = 0.00268    # ~2.68 kg CO2e / litre diesel -> 0.00268 tCO2e
+
+    emissions_from_power = total_kwh * GRID_EF_T_PER_KWH
+    emissions_from_fuel = total_fuel_l * FUEL_EF_T_PER_L
+    carbon_emissions_tons = emissions_from_power + emissions_from_fuel
+
+    # --- Water & Waste ---
+    water_use_m3 = float(df["Water_kl"].fillna(0).sum())  # 1 kl ≈ 1 m3
+    waste_generated_tons = float(df["Waste_Generated_kg"].fillna(0).sum()) / 1000.0
+
+    # --- Social score heuristic ---
+    avg_training = float(df["Training_Hours"].fillna(0).mean() or 0)
+    if df["Women_pct"].notna().any():
+        avg_women = float(df["Women_pct"].dropna().mean())
+    else:
+        avg_women = 30.0
+    if df["Youth_pct"].notna().any():
+        avg_youth = float(df["Youth_pct"].dropna().mean())
+    else:
+        avg_youth = 25.0
+    total_incidents = int(df["Incidents"].fillna(0).sum())
+
+    base_social = 60.0
+    diversity_boost = (avg_women + avg_youth) / 5.0  # up to ~40
+    training_boost = min(20.0, max(0.0, avg_training / 2.0))
+    incident_penalty = min(15.0, total_incidents * 1.5)
+
+    social_score_raw = base_social + diversity_boost + training_boost - incident_penalty
+    social_score_raw = max(0.0, min(100.0, social_score_raw))
+
+    # --- Governance score heuristic ---
+    total_gov_trainings = int(df["Governance_Trainings"].fillna(0).sum())
+    gov_base = 65.0
+    gov_training_boost = min(25.0, total_gov_trainings * 0.8)
+    gov_incident_penalty = min(15.0, total_incidents * 1.5)
+
+    governance_score_raw = gov_base + gov_training_boost - gov_incident_penalty
+    governance_score_raw = max(0.0, min(100.0, governance_score_raw))
+
+    return ESGInput(
+        company_name="Timeseries Import",
+        period=period,
+        carbon_emissions_tons=round(carbon_emissions_tons, 2),
+        energy_consumption_mwh=round(energy_mwh, 2),
+        water_use_m3=round(water_use_m3, 2),
+        waste_generated_tons=round(waste_generated_tons, 2),
+        social_score_raw=round(social_score_raw, 1),
+        governance_score_raw=round(governance_score_raw, 1),
+    )
+
+
+def build_esg_input_from_excel(content: bytes) -> ESGInput:
+    """
+    Excel -> ESGInput converter.
+
+    Supports both "classic" ESG columns and the timeseries schema names
+    (Electricity_kWh, Water_kl, Waste_Generated_kg, etc.).
+    """
+    try:
+        df = pd.read_excel(io.BytesIO(content))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to read Excel file: {exc}",
+        )
+
+    def col_sum(*candidates: str) -> float:
+        for name in candidates:
+            if name in df.columns:
+                return float(df[name].fillna(0).sum())
+        return 0.0
+
+    def col_mean(*candidates: str, default: float) -> float:
+        for name in candidates:
+            if name in df.columns:
+                return float(df[name].fillna(default).mean())
+        return default
+
+    # Energy
+    energy_mwh = col_sum("Energy (MWh)", "Electricity (MWh)")
+    if energy_mwh == 0:
+        kwh = col_sum("Electricity (kWh)", "Energy (kWh)", "Electricity_kWh")
+        energy_mwh = kwh / 1000.0 if kwh else 0.0
+
+    # Carbon direct
+    carbon = col_sum("CO2 (t)", "Carbon Emissions (t)", "Emissions (tCO2e)")
+
+    # Water
+    water = col_sum(
+        "Water (m3)", "Water Use (m3)", "Water Use (kl)", "Water_kl"
+    ) * 1.0
+
+    # Waste: try tonnes, then kg
+    waste_tons = col_sum("Waste (t)", "Waste Generated (t)", "Waste (tonnes)")
+    waste_kg = col_sum("Waste_Generated_kg")
+    if waste_tons == 0 and waste_kg:
+        waste_tons = waste_kg / 1000.0
+
+    social_score = col_mean(
+        "Social Score", "S-Score", default=DEFAULT_ESG_INPUT.social_score_raw
+    )
+    governance_score = col_mean(
+        "Governance Score", "G-Score", default=DEFAULT_ESG_INPUT.governance_score_raw
+    )
+
+    return ESGInput(
+        company_name="Excel Import",
+        period="Imported",
+        carbon_emissions_tons=carbon or DEFAULT_ESG_INPUT.carbon_emissions_tons,
+        energy_consumption_mwh=energy_mwh
+        or DEFAULT_ESG_INPUT.energy_consumption_mwh,
+        water_use_m3=water or DEFAULT_ESG_INPUT.water_use_m3,
+        waste_generated_tons=waste_tons or DEFAULT_ESG_INPUT.waste_generated_tons,
+        social_score_raw=social_score,
+        governance_score_raw=governance_score,
+    )
+
+
+# ================== ROUTES ==================
+@app.get("/api/health", tags=["System"])
+async def health():
+    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
+
+@app.get(
+    "/platform/overview",
+    response_model=PlatformOverview,
+    tags=["Platform"],
+)
+async def platform_overview():
+    """
+    Used by Dashboard.jsx to populate platformStats.
+    """
+    return PlatformOverview(
+        countries_supported=50,
+        esg_reports_generated=10000,
+        compliance_accuracy=0.99,
+        ai_support_mode="24/7",
+    )
+
+
+@app.post(
+    "/esg/analyse",
+    response_model=AnalyseResponse,
+    tags=["ESG Analysis"],
+)
+async def esg_analyse(payload: ESGInput):
+    """
+    Main analysis endpoint used by Dashboard.jsx.
+    """
+    global last_esg_input, last_scores, last_insights
+
+    scores = calculate_esg_scores(payload)
+    insights = await generate_esg_ai_insights(payload, scores)
+
+    last_esg_input = payload
+    last_scores = scores
+    last_insights = insights
+
+    return AnalyseResponse(scores=scores, insights=insights)
+
+
+@app.get(
+    "/api/esg-data",
+    response_model=ESGDataResponse,
+    tags=["AI Insights"],
+)
+async def api_esg_data():
+    """
+    ESG data bundle: summary + metrics + pillar metric blocks + combined insights.
+    """
+    esg_input = last_esg_input or DEFAULT_ESG_INPUT
+    scores = last_scores or calculate_esg_scores(esg_input)
+
+    summary, metrics, env_metrics, soc_metrics, gov_metrics = \
+        build_summary_and_metrics(esg_input, scores)
+
+    if last_insights:
+        combined_insights: List[str] = [
+            last_insights.overall,
+            *last_insights.environmental,
+            *last_insights.social,
+            *last_insights.governance,
+        ]
+    else:
+        combined_insights = [
+            "Initial ESG summary generated from latest ESG input.",
+        ]
+
+    mock = ESGDataMock(
+        summary=summary,
+        metrics=metrics,
+        environmentalMetrics=env_metrics,
+        socialMetrics=soc_metrics,
+        governanceMetrics=gov_metrics,
+    )
+
+    return ESGDataResponse(mockData=mock, insights=combined_insights)
+
+
+@app.post(
+    "/api/esg-upload",
+    response_model=ESGDataResponse,
+    tags=["AI Insights"],
+)
+async def api_esg_upload(file: UploadFile = File(...)):
+    """
+    Upload ESG data (JSON or Excel), update the current ESG run and
+    return mockData + insights similar to /api/esg-data.
+
+    Supported:
+    - .json:
+        * ESGInput-style object (company_name, period, carbon_emissions_tons, etc.), OR
+        * Array of timeseries rows matching OperationalRecord
+    - .xlsx / .xls:
+        * Excel with CO2, Energy, Water, Waste columns, or the timeseries schema columns.
+    """
+    global last_esg_input, last_scores, last_insights
+
+    filename = (file.filename or "").lower()
+
+    # Read file content into memory
+    try:
+        content = await file.read()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to read uploaded file: {exc}",
+        )
+
+    if filename.endswith(".json"):
+        # JSON: could be ESGInput object OR timeseries array
+        try:
+            payload = json.loads(content.decode("utf-8"))
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid JSON file: {exc}",
+            )
+
+        if isinstance(payload, dict):
+            # Try ESGInput schema (legacy behaviour)
+            try:
+                esg_input = ESGInput(**payload)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"JSON object does not match ESGInput schema: {exc}",
+                )
+        elif isinstance(payload, list):
+            # Timeseries array – map each row to OperationalRecord
+            try:
+                records = [OperationalRecord(**row) for row in payload]
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"JSON array does not match OperationalRecord schema: {exc}",
+                )
+            esg_input = build_esg_input_from_timeseries(records)
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="JSON must be either an object (ESGInput) or an array of records.",
+            )
+
+    elif filename.endswith(".xlsx") or filename.endswith(".xls"):
+        # Excel: convert into ESGInput
+        esg_input = build_esg_input_from_excel(content)
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Please upload .json, .xlsx or .xls.",
+        )
+
+    # Run analysis
+    scores = calculate_esg_scores(esg_input)
+    insights_obj = await generate_esg_ai_insights(esg_input, scores)
+
+    # Update global "current" ESG run
+    last_esg_input = esg_input
+    last_scores = scores
+    last_insights = insights_obj
+
+    # Rebuild summary + pillar metrics to return
+    summary, metrics, env_metrics, soc_metrics, gov_metrics = \
+        build_summary_and_metrics(esg_input, scores)
+
+    combined_insights: List[str] = [
+        insights_obj.overall,
+        *insights_obj.environmental,
+        *insights_obj.social,
+        *insights_obj.governance,
+    ]
+
+    mock = ESGDataMock(
+        summary=summary,
+        metrics=metrics,
+        environmentalMetrics=env_metrics,
+        socialMetrics=soc_metrics,
+        governanceMetrics=gov_metrics,
+    )
+
+    return ESGDataResponse(mockData=mock, insights=combined_insights)
+
+
+@app.get(
+    "/api/environmental-insights",
+    response_model=PillarInsightsResponse,
+    tags=["AI Insights"],
+)
+async def api_environmental_insights():
+    """
+    For EnvironmentalCategory.jsx:
+    returns environmentalMetrics + AI insights.
+    """
+    esg_input = last_esg_input or DEFAULT_ESG_INPUT
+    scores = last_scores or calculate_esg_scores(esg_input)
+    env_metrics = build_environmental_metrics_from_input(esg_input, scores)
+    insights = await generate_pillar_insights("environmental", env_metrics)
+    return PillarInsightsResponse(metrics=env_metrics, insights=insights)
+
+
+@app.get(
+    "/api/social-insights",
+    response_model=PillarInsightsResponse,
+    tags=["AI Insights"],
+)
+async def api_social_insights():
+    """
+    For SocialCategory.jsx:
+    returns socialMetrics + socialInsights.
+    """
+    esg_input = last_esg_input or DEFAULT_ESG_INPUT
+    scores = last_scores or calculate_esg_scores(esg_input)
+    soc_metrics = build_social_metrics_from_input(esg_input, scores)
+    insights = await generate_pillar_insights("social", soc_metrics)
+    return PillarInsightsResponse(metrics=soc_metrics, insights=insights)
+
+
+@app.get(
+    "/api/governance-insights",
+    response_model=PillarInsightsResponse,
+    tags=["AI Insights"],
+)
+async def api_governance_insights():
+    """
+    For GovernanceCategory.jsx:
+    returns governanceMetrics + governanceInsights.
+    """
+    esg_input = last_esg_input or DEFAULT_ESG_INPUT
+    scores = last_scores or calculate_esg_scores(esg_input)
+    gov_metrics = build_governance_metrics_from_input(esg_input, scores)
+    insights = await generate_pillar_insights("governance", gov_metrics)
+    return PillarInsightsResponse(metrics=gov_metrics, insights=insights)

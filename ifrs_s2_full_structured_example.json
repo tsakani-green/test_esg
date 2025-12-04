@@ -1,0 +1,84 @@
+{
+  "entity_name": "Continental Climate-Ready Bank",
+  "reporting_period": "FY2024",
+  "currency": "ZAR",
+  "governance": {
+    "board_oversight": {
+      "has_climate_mandate": true,
+      "committee_name": "Board Risk & Sustainability Committee",
+      "reporting_frequency_per_year": 4
+    },
+    "management_roles": [
+      {
+        "title": "Chief Sustainability Officer",
+        "reports_to": "Group CEO",
+        "climate_kpi_linked_to_remuneration": true
+      }
+    ]
+  },
+  "strategy": {
+    "material_climate_risks": [
+      "Chronic physical risk to branch network in flood-prone regions",
+      "Transition risk from financed emissions in carbon-intensive sectors",
+      "Reputation risk from misalignment with net-zero pathways"
+    ],
+    "time_horizons": {
+      "short_term": "1–3 years",
+      "medium_term": "3–10 years",
+      "long_term": "10+ years"
+    },
+    "scenario_analysis": {
+      "uses_scenarios": true,
+      "scenarios": [
+        {
+          "name": "IEA NZE 2050",
+          "type": "1.5°C transition",
+          "key_financial_impacts": "Higher credit losses in coal lending portfolio, revaluation of carbon-intensive collateral."
+        },
+        {
+          "name": "Hot House World",
+          "type": "3°C+ physical",
+          "key_financial_impacts": "Increased operational disruption and insurance costs in coastal regions."
+        }
+      ]
+    }
+  },
+  "risk_management": {
+    "processes_for_identification": [
+      "Integration of climate risk factors into credit risk assessment",
+      "Portfolio-level heatmapping of financed emissions and sector exposures"
+    ],
+    "integration_into_overall_risk_management": [
+      "Climate risk included within enterprise risk management framework",
+      "Regular reporting to Board Risk & Sustainability Committee"
+    ]
+  },
+  "metrics_and_targets": {
+    "ghg_emissions": {
+      "scope1_tco2e": 4500,
+      "scope2_tco2e_location_based": 19500,
+      "scope3_tco2e_financed_emissions": 3200000
+    },
+    "financed_emissions": {
+      "methodology": "PCAF",
+      "high_emitting_sector_share_percent": 18
+    },
+    "targets": [
+      {
+        "target_type": "Scope 1+2 absolute emissions",
+        "base_year": 2020,
+        "base_year_emissions_tco2e": 32000,
+        "target_year": 2030,
+        "target_reduction_percent": 50,
+        "coverage_percent_of_operations": 95
+      },
+      {
+        "target_type": "Financed emissions intensity",
+        "base_year": 2021,
+        "target_year": 2030,
+        "target_reduction_percent": 35,
+        "sectors_covered": ["Power", "Oil & Gas", "Mining", "Heavy Industry"]
+      }
+    ]
+  }
+}

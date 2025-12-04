@@ -1,0 +1,10 @@
+{
+  "company_name": "Continental Climate-Ready Bank",
+  "period": "FY2024",
+  "carbon_emissions_tons": 24000,
+  "energy_consumption_mwh": 3100,
+  "water_use_m3": 120000,
+  "waste_generated_tons": 95,
+  "social_score_raw": 82,
+  "governance_score_raw": 88
+}
