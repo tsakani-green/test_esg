@@ -37,7 +37,6 @@ import {
   FiRefreshCw,
   FiEye,
   FiEyeOff,
-  FiDownload,
 } from "react-icons/fi";
 import {
   FaFilePdf,
@@ -80,7 +79,6 @@ const MONTH_ORDER = [
   "Dec",
 ];
 
-// Modern color palette
 const chartTheme = {
   grid: "#e5e7eb",
   axis: "#9ca3af",
@@ -94,10 +92,8 @@ const chartTheme = {
   wind: "#8b5cf6",
 };
 
-// UPDATED: New emission factor - Carbon (tCO₂e) = Energy (kWh) * 0.99 / 1000
-const EF_ELECTRICITY_T_PER_KWH = 0.99 / 1000; // 0.00099
+const EF_ELECTRICITY_T_PER_KWH = 0.99 / 1000;
 
-// Animations
 const tabContentVariants = {
   initial: { opacity: 0, y: 20 },
   animate: { opacity: 1, y: 0 },
@@ -161,7 +157,6 @@ const getLastSixInvoices = (invoices) => {
   return withIndex.slice(0, 6).map((x) => x.inv);
 };
 
-// Energy (kWh – last 6 months) per invoice
 const getInvoiceSixMonthEnergy = (inv) => {
   if (!inv) return null;
 
@@ -252,7 +247,7 @@ const getTaxInvoiceIdentifier = (inv) => {
   return nonLabel || null;
 };
 
-// Enhanced Custom Tooltip
+// Tooltip
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload || payload.length === 0) return null;
 
@@ -264,7 +259,10 @@ const CustomTooltip = ({ active, payload, label }) => {
       </div>
       <div className="space-y-2">
         {payload.map((entry) => (
-          <div key={entry.dataKey} className="flex items-center justify-between gap-4">
+          <div
+            key={entry.dataKey}
+            className="flex items-center justify-between gap-4"
+          >
             <div className="flex items-center gap-2">
               <div
                 className="w-2 h-2 rounded-full"
@@ -289,8 +287,17 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-// Modern KPI Card Component
-const KpiCard = ({ title, value, unit, icon: Icon, color, trend, trendValue, onClick }) => {
+// KPI card
+const KpiCard = ({
+  title,
+  value,
+  unit,
+  icon: Icon,
+  color,
+  trend,
+  trendValue,
+  onClick,
+}) => {
   const colors = {
     emerald: "from-emerald-500 to-teal-500",
     blue: "from-blue-500 to-cyan-500",
@@ -310,17 +317,24 @@ const KpiCard = ({ title, value, unit, icon: Icon, color, trend, trendValue, onC
       variants={cardVariants}
       whileHover="hover"
       onClick={onClick}
-      className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-white to-gray-50 border border-gray-200 shadow-lg ${onClick ? 'cursor-pointer hover:border-emerald-300' : ''}`}
+      className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-white to-gray-50 border border-gray-200 shadow-lg ${
+        onClick ? "cursor-pointer hover:border-emerald-300" : ""
+      }`}
     >
       <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-white/20 to-transparent rounded-full -translate-y-12 translate-x-12" />
       <div className="p-6">
         <div className="flex items-center justify-between mb-4">
-          <div className={`p-3 rounded-xl bg-gradient-to-br ${colors[color] || 'from-gray-100 to-gray-200'}`}>
+          <div
+            className={`p-3 rounded-xl bg-gradient-to-br ${
+              colors[color] || "from-gray-100 to-gray-200"
+            }`}
+          >
             <Icon className="w-6 h-6 text-white" />
           </div>
           {trend && (
             <div className={`text-xs font-semibold ${trendColors[trend]}`}>
-              {trend === "up" ? "↗" : trend === "down" ? "↘" : "→"} {trendValue}
+              {trend === "up" ? "↗" : trend === "down" ? "↘" : "→"}{" "}
+              {trendValue}
             </div>
           )}
         </div>
@@ -336,7 +350,7 @@ const KpiCard = ({ title, value, unit, icon: Icon, color, trend, trendValue, onC
   );
 };
 
-// File Upload Component
+// Upload area (for overview invoice section)
 const FileUploadArea = ({ onFileUpload, isLoading }) => {
   const fileInputRef = useRef(null);
   const [dragActive, setDragActive] = useState(false);
@@ -345,10 +359,10 @@ const FileUploadArea = ({ onFileUpload, isLoading }) => {
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
+    if (e.type === "dragenter" || e.type === "dragleave") {
+      setDragActive(e.type === "dragenter");
+    } else if (e.type === "dragover") {
       setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
     }
   };
 
@@ -356,10 +370,12 @@ const FileUploadArea = ({ onFileUpload, isLoading }) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const files = Array.from(e.dataTransfer.files).filter(file => 
-        file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
+      const files = Array.from(e.dataTransfer.files).filter(
+        (file) =>
+          file.type === "application/pdf" ||
+          file.name.toLowerCase().endsWith(".pdf")
       );
       setSelectedFiles(files);
     }
@@ -367,8 +383,10 @@ const FileUploadArea = ({ onFileUpload, isLoading }) => {
 
   const handleFileSelect = (e) => {
     if (e.target.files && e.target.files.length > 0) {
-      const files = Array.from(e.target.files).filter(file => 
-        file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
+      const files = Array.from(e.target.files).filter(
+        (file) =>
+          file.type === "application/pdf" ||
+          file.name.toLowerCase().endsWith(".pdf")
       );
       setSelectedFiles(files);
     }
@@ -378,14 +396,12 @@ const FileUploadArea = ({ onFileUpload, isLoading }) => {
     if (selectedFiles.length > 0) {
       onFileUpload(selectedFiles);
       setSelectedFiles([]);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
   const removeFile = (index) => {
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -409,7 +425,7 @@ const FileUploadArea = ({ onFileUpload, isLoading }) => {
           onChange={handleFileSelect}
           className="hidden"
         />
-        
+
         <div className="text-center">
           <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 flex items-center justify-center mb-4">
             <FaFileUpload className="w-8 h-8 text-emerald-600" />
@@ -420,7 +436,7 @@ const FileUploadArea = ({ onFileUpload, isLoading }) => {
           <p className="text-sm text-gray-600 mb-4">
             Drag & drop your PDF invoices here, or click to browse
           </p>
-          
+
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
@@ -429,9 +445,10 @@ const FileUploadArea = ({ onFileUpload, isLoading }) => {
             <FiUpload className="w-5 h-5" />
             Select PDF Files
           </button>
-          
+
           <p className="text-xs text-gray-500 mt-3">
-            Supports multiple PDF invoices. Each should contain 6-month energy usage data.
+            Supports multiple PDF invoices. Each should contain 6-month energy
+            usage data.
           </p>
         </div>
       </div>
@@ -464,7 +481,7 @@ const FileUploadArea = ({ onFileUpload, isLoading }) => {
               )}
             </button>
           </div>
-          
+
           <div className="space-y-2 max-h-60 overflow-y-auto">
             {selectedFiles.map((file, index) => (
               <motion.div
@@ -501,7 +518,6 @@ const FileUploadArea = ({ onFileUpload, isLoading }) => {
   );
 };
 
-// Invoice Processing Status Component
 const InvoiceProcessingStatus = ({ loading, error, successCount }) => {
   if (loading) {
     return (
@@ -516,7 +532,9 @@ const InvoiceProcessingStatus = ({ loading, error, successCount }) => {
         </div>
         <div>
           <p className="font-medium text-blue-900">Processing Invoices...</p>
-          <p className="text-sm text-blue-700">Extracting energy and cost data from PDFs</p>
+          <p className="text-sm text-blue-700">
+            Extracting energy and cost data from PDFs
+          </p>
         </div>
       </motion.div>
     );
@@ -548,7 +566,8 @@ const InvoiceProcessingStatus = ({ loading, error, successCount }) => {
         <FiCheckCircle className="w-6 h-6 text-emerald-600" />
         <div>
           <p className="font-medium text-emerald-900">
-            Successfully processed {successCount} invoice{successCount > 1 ? "s" : ""}
+            Successfully processed {successCount} invoice
+            {successCount > 1 ? "s" : ""}
           </p>
           <p className="text-sm text-emerald-700">
             Energy and cost data extracted and ready for analysis
@@ -561,7 +580,6 @@ const InvoiceProcessingStatus = ({ loading, error, successCount }) => {
   return null;
 };
 
-// Invoice Table Component
 const InvoiceTable = ({ invoices, onViewDetails }) => {
   const [showDetails, setShowDetails] = useState(false);
 
@@ -571,8 +589,12 @@ const InvoiceTable = ({ invoices, onViewDetails }) => {
         <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
           <FaFilePdf className="w-8 h-8 text-gray-400" />
         </div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">No Invoices Processed</h3>
-        <p className="text-sm text-gray-600">Upload PDF invoices to see detailed data here</p>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          No Invoices Processed
+        </h3>
+        <p className="text-sm text-gray-600">
+          Upload PDF invoices to see detailed data here
+        </p>
       </div>
     );
   }
@@ -581,9 +603,11 @@ const InvoiceTable = ({ invoices, onViewDetails }) => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Processed Invoices</h3>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Processed Invoices
+          </h3>
           <p className="text-sm text-gray-600 mt-1">
-            {invoices.length} invoice{invoices.length > 1 ? 's' : ''} processed
+            {invoices.length} invoice{invoices.length > 1 ? "s" : ""} processed
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -591,18 +615,12 @@ const InvoiceTable = ({ invoices, onViewDetails }) => {
             onClick={() => setShowDetails(!showDetails)}
             className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-800"
           >
-            {showDetails ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
-            {showDetails ? 'Hide Details' : 'Show Details'}
-          </button>
-          <button
-            onClick={() => {
-              const csvContent = convertInvoicesToCSV(invoices);
-              downloadCSV(csvContent, 'invoices.csv');
-            }}
-            className="inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-800"
-          >
-            <FiDownload className="w-4 h-4" />
-            Export CSV
+            {showDetails ? (
+              <FiEyeOff className="w-4 h-4" />
+            ) : (
+              <FiEye className="w-4 h-4" />
+            )}
+            {showDetails ? "Hide Details" : "Show Details"}
           </button>
         </div>
       </div>
@@ -641,8 +659,9 @@ const InvoiceTable = ({ invoices, onViewDetails }) => {
             {invoices.map((invoice, index) => {
               const sixMonthEnergy = getInvoiceSixMonthEnergy(invoice);
               const taxInvoice = getTaxInvoiceIdentifier(invoice);
-              const estimatedCarbon = sixMonthEnergy * EF_ELECTRICITY_T_PER_KWH;
-              
+              const estimatedCarbon =
+                sixMonthEnergy * EF_ELECTRICITY_T_PER_KWH;
+
               return (
                 <motion.tr
                   key={index}
@@ -667,10 +686,10 @@ const InvoiceTable = ({ invoices, onViewDetails }) => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {invoice.invoice_date || '—'}
+                    {invoice.invoice_date || "—"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
-                    {taxInvoice || '—'}
+                    {taxInvoice || "—"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900 max-w-xs truncate">
@@ -678,22 +697,29 @@ const InvoiceTable = ({ invoices, onViewDetails }) => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
-                    {sixMonthEnergy ? sixMonthEnergy.toLocaleString(undefined, {
-                      maximumFractionDigits: 0,
-                    }) : '—'}
+                    {sixMonthEnergy
+                      ? sixMonthEnergy.toLocaleString(undefined, {
+                          maximumFractionDigits: 0,
+                        })
+                      : "—"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
-                    {invoice.total_current_charges ? 
-                      `R ${Number(invoice.total_current_charges).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}` : '—'}
+                    {invoice.total_current_charges
+                      ? `R ${Number(
+                          invoice.total_current_charges
+                        ).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}`
+                      : "—"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
-                    {sixMonthEnergy ? estimatedCarbon.toLocaleString(undefined, {
-                      minimumFractionDigits: 1,
-                      maximumFractionDigits: 1,
-                    }) : '—'}
+                    {sixMonthEnergy
+                      ? estimatedCarbon.toLocaleString(undefined, {
+                          minimumFractionDigits: 1,
+                          maximumFractionDigits: 1,
+                        })
+                      : "—"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <button
@@ -713,10 +739,12 @@ const InvoiceTable = ({ invoices, onViewDetails }) => {
       {showDetails && invoices.length > 0 && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: 'auto' }}
+          animate={{ opacity: 1, height: "auto" }}
           className="space-y-4"
         >
-          <h4 className="text-sm font-semibold text-gray-900">Monthly Breakdown</h4>
+          <h4 className="text-sm font-semibold text-gray-900">
+            Monthly Breakdown
+          </h4>
           <div className="overflow-x-auto rounded-xl border border-gray-200">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -740,28 +768,41 @@ const InvoiceTable = ({ invoices, onViewDetails }) => {
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
                 {invoices.flatMap((invoice, invoiceIndex) => {
-                  const history = Array.isArray(invoice.sixMonthHistory) 
-                    ? invoice.sixMonthHistory 
+                  const history = Array.isArray(invoice.sixMonthHistory)
+                    ? invoice.sixMonthHistory
                     : [];
-                  
+
                   return history.map((month, monthIndex) => {
-                    const monthEnergy = Number(month.energyKWh ?? month.energy_kwh ?? 0) || 0;
-                    const monthCharges = Number(month.total_current_charges ?? month.current_charges ?? 0) || 0;
-                    const monthCarbon = monthEnergy * EF_ELECTRICITY_T_PER_KWH;
-                    
+                    const monthEnergy =
+                      Number(month.energyKWh ?? month.energy_kwh ?? 0) || 0;
+                    const monthCharges =
+                      Number(
+                        month.total_current_charges ??
+                          month.current_charges ??
+                          0
+                      ) || 0;
+                    const monthCarbon =
+                      monthEnergy * EF_ELECTRICITY_T_PER_KWH;
+
                     return (
-                      <tr key={`${invoiceIndex}-${monthIndex}`} className="hover:bg-gray-50">
+                      <tr
+                        key={`${invoiceIndex}-${monthIndex}`}
+                        className="hover:bg-gray-50"
+                      >
                         <td className="px-4 py-3 text-sm text-gray-900">
-                          {monthIndex === 0 ? getCompanyName(invoice) : ''}
+                          {monthIndex === 0 ? getCompanyName(invoice) : ""}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700">
                           {month.month_label || `Month ${monthIndex + 1}`}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900 font-medium">
-                          {monthEnergy.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          {monthEnergy.toLocaleString(undefined, {
+                            maximumFractionDigits: 0,
+                          })}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900 font-medium">
-                          R {monthCharges.toLocaleString(undefined, {
+                          R{" "}
+                          {monthCharges.toLocaleString(undefined, {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
@@ -782,86 +823,29 @@ const InvoiceTable = ({ invoices, onViewDetails }) => {
   );
 };
 
-// Helper functions for CSV export
-const convertInvoicesToCSV = (invoices) => {
-  const headers = [
-    'Company',
-    'Invoice Date',
-    'Tax Invoice #',
-    'Categories',
-    '6-Month Energy (kWh)',
-    'Current Charges (R)',
-    'Estimated Carbon (tCO₂e)',
-    'Filename'
-  ];
-
-  const rows = invoices.map(invoice => {
-    const sixMonthEnergy = getInvoiceSixMonthEnergy(invoice);
-    const taxInvoice = getTaxInvoiceIdentifier(invoice);
-    const estimatedCarbon = sixMonthEnergy * EF_ELECTRICITY_T_PER_KWH;
-
-    return [
-      `"${getCompanyName(invoice).replace(/"/g, '""')}"`,
-      `"${invoice.invoice_date || ''}"`,
-      `"${taxInvoice || ''}"`,
-      `"${getInvoiceCategoriesText(invoice).replace(/"/g, '""')}"`,
-      sixMonthEnergy || '',
-      invoice.total_current_charges || '',
-      estimatedCarbon.toFixed(1),
-      `"${invoice.filename || ''}"`
-    ];
-  });
-
-  return [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
-};
-
-const downloadCSV = (csvContent, fileName) => {
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  
-  link.setAttribute('href', url);
-  link.setAttribute('download', fileName);
-  link.style.visibility = 'hidden';
-  
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-};
-
 export default function EnvironmentalCategory() {
-  const {
-    environmentalMetrics,
-    environmentalInsights,
-    loading,
-    error,
-  } = useContext(SimulationContext);
+  const { environmentalMetrics, environmentalInsights, loading, error } =
+    useContext(SimulationContext);
 
   const [activeTab, setActiveTab] = useState("overview");
-  const [hoveredCard, setHoveredCard] = useState(null);
   const [uploadSuccessCount, setUploadSuccessCount] = useState(0);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
 
-  // ---- ESG METRICS FROM CONTEXT ----
   const metrics = environmentalMetrics || {};
 
-  // ---------- INVOICE STATE ----------
   const [invoiceSummaries, setInvoiceSummaries] = useState([]);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [invoiceError, setInvoiceError] = useState(null);
 
-  // AI Environmental Insights for invoices
   const [invoiceAiMetrics, setInvoiceAiMetrics] = useState(null);
   const [invoiceAiInsights, setInvoiceAiInsights] = useState([]);
   const [invoiceAiLoading, setInvoiceAiLoading] = useState(false);
   const [invoiceAiError, setInvoiceAiError] = useState(null);
 
-  // Raw rows coming from the ESG Excel/JSON upload.
   const uploadedRows =
     metrics.uploadedRows || metrics.rows || metrics.data || [];
 
-  // ✅ Build monthly aggregated series from uploaded ESG rows
   const monthlySeries = useMemo(() => {
     if (!Array.isArray(uploadedRows) || uploadedRows.length === 0) return [];
 
@@ -874,11 +858,9 @@ export default function EnvironmentalCategory() {
         row.period ||
         row.Period ||
         row.month_label;
-
       if (!label) return;
 
       const key = label.toString().trim();
-
       if (!map.has(key)) {
         map.set(key, {
           name: key,
@@ -892,7 +874,6 @@ export default function EnvironmentalCategory() {
 
       const agg = map.get(key);
 
-      // Energy for this row
       const rowEnergy =
         Number(
           row.energy_kwh ??
@@ -903,7 +884,6 @@ export default function EnvironmentalCategory() {
         ) || 0;
       agg.energy += rowEnergy;
 
-      // Carbon from file if available, otherwise estimate from energy
       let rowCarbonRaw =
         row.co2_tonnes ??
         row.co2Tonnes ??
@@ -912,24 +892,17 @@ export default function EnvironmentalCategory() {
         row.carbon ??
         row.emissions_tonnes ??
         row.emissions;
-
       let rowCarbon = rowCarbonRaw != null ? Number(rowCarbonRaw) : NaN;
       if (Number.isNaN(rowCarbon)) {
-        // UPDATED: Estimate from energy using new formula
         rowCarbon = rowEnergy * EF_ELECTRICITY_T_PER_KWH;
       }
       agg.carbon += Number.isFinite(rowCarbon) ? rowCarbon : 0;
 
-      // Waste
       agg.waste +=
         Number(row.waste_tonnes ?? row["Waste (t)"] ?? row.waste) || 0;
-
-      // Fuel
       agg.fuel +=
         Number(row.fuel_litres ?? row.fuel_l ?? row["Fuel (L)"] ?? row.fuel) ||
         0;
-
-      // Water
       agg.water +=
         Number(row.water_m3 ?? row["Water (m³)"] ?? row.water) || 0;
 
@@ -937,12 +910,9 @@ export default function EnvironmentalCategory() {
     });
 
     const arr = Array.from(map.values());
-
-    // Sort by month order if labels are typical month names, otherwise alphabetically
     arr.sort((a, b) => {
       const ai = MONTH_ORDER.indexOf(a.name);
       const bi = MONTH_ORDER.indexOf(b.name);
-
       if (ai !== -1 && bi !== -1) return ai - bi;
       return a.name.localeCompare(b.name);
     });
@@ -950,19 +920,17 @@ export default function EnvironmentalCategory() {
     return arr.slice(-6);
   }, [uploadedRows]);
 
-  // ✅ For energy: prefer backend metrics if present, else monthlySeries
   const energyUsage =
     (metrics.energyUsage && metrics.energyUsage.length
       ? metrics.energyUsage
       : monthlySeries.map((m) => m.energy)) || [];
 
-  // ✅ For carbon: ALWAYS prefer monthlySeries (uploaded file) if available
   const co2Emissions =
     monthlySeries.length > 0
       ? monthlySeries.map((m) => m.carbon)
-      : (metrics.co2Emissions && metrics.co2Emissions.length
-          ? metrics.co2Emissions
-          : []);
+      : metrics.co2Emissions && metrics.co2Emissions.length
+      ? metrics.co2Emissions
+      : [];
 
   const waste =
     (metrics.waste && metrics.waste.length
@@ -988,9 +956,7 @@ export default function EnvironmentalCategory() {
   }, [energyUsage, co2Emissions, waste, fuelUsage, waterUsage]);
 
   const chartData = useMemo(() => {
-    if (monthlySeries.length > 0) {
-      return monthlySeries;
-    }
+    if (monthlySeries.length > 0) return monthlySeries;
 
     return months.map((m, idx) => ({
       name: m,
@@ -1011,12 +977,11 @@ export default function EnvironmentalCategory() {
       : 0;
   const totalWaste = waste.reduce((s, v) => s + (v || 0), 0);
 
-  // AI invoice helpers
   const persistInvoiceSummaries = (arr) => {
     try {
       localStorage.setItem("invoiceSummaries", JSON.stringify(arr));
     } catch (e) {
-      console.warn("Failed to persist invoiceSummaries to localStorage", e);
+      console.warn("Failed to persist invoiceSummaries", e);
     }
   };
 
@@ -1073,7 +1038,6 @@ export default function EnvironmentalCategory() {
     }
   };
 
-  // Clear all invoices
   const handleClearInvoices = () => {
     if (window.confirm("Are you sure you want to clear all invoice data?")) {
       setInvoiceSummaries([]);
@@ -1084,28 +1048,23 @@ export default function EnvironmentalCategory() {
     }
   };
 
-  // View invoice details
   const handleViewInvoiceDetails = (invoice) => {
     setSelectedInvoice(invoice);
     setShowInvoiceModal(true);
   };
 
-  // Load invoices from localStorage on mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem("invoiceSummaries");
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          setInvoiceSummaries(parsed);
-        }
+        if (Array.isArray(parsed)) setInvoiceSummaries(parsed);
       }
     } catch (e) {
       console.warn("Failed to parse invoiceSummaries from localStorage", e);
     }
   }, []);
 
-  // Load existing invoices from backend
   useEffect(() => {
     const loadInvoices = async () => {
       try {
@@ -1120,11 +1079,9 @@ export default function EnvironmentalCategory() {
         console.warn("Failed to load invoice summaries", e);
       }
     };
-
     loadInvoices();
   }, []);
 
-  // Load AI environmental insights for invoices
   useEffect(() => {
     if (!invoiceSummaries || invoiceSummaries.length === 0) return;
 
@@ -1139,9 +1096,7 @@ export default function EnvironmentalCategory() {
 
         if (!res.ok) {
           const txt = await res.text();
-          throw new Error(
-            `Invoice AI insights error: ${res.status} ${txt}`
-          );
+          throw new Error(`Invoice AI insights error: ${res.status} ${txt}`);
         }
 
         const data = await res.json();
@@ -1163,7 +1118,6 @@ export default function EnvironmentalCategory() {
     loadInvoiceAI();
   }, [invoiceSummaries.length]);
 
-  // Last 6 invoices
   const lastSixInvoices = getLastSixInvoices(invoiceSummaries);
   const lastSixInvoicesChrono = useMemo(() => {
     const copy = [...lastSixInvoices];
@@ -1177,7 +1131,6 @@ export default function EnvironmentalCategory() {
 
   const totalInvoices = lastSixInvoicesChrono.length;
 
-  // Aggregated metrics using energy over last 6 months per invoice
   const { totalEnergyKwh, totalCurrentCharges, totalAmountDue } =
     lastSixInvoicesChrono.reduce(
       (acc, inv) => {
@@ -1200,17 +1153,14 @@ export default function EnvironmentalCategory() {
       }
     );
 
-  // Blended tariff based on last 6 invoices
   const avgTariff =
     totalEnergyKwh > 0 ? totalCurrentCharges / totalEnergyKwh : 0;
 
-  // UPDATED: Use new formula for invoice carbon calculation
   const totalInvoiceCo2Tonnes =
     invoiceAiMetrics && invoiceAiMetrics.estimated_co2_tonnes != null
       ? invoiceAiMetrics.estimated_co2_tonnes
       : totalEnergyKwh * EF_ELECTRICITY_T_PER_KWH;
 
-  // ---------- Flatten sixMonthHistory into month-level rows ----------
   const monthLevelRows = useMemo(() => {
     const rows = [];
 
@@ -1238,7 +1188,6 @@ export default function EnvironmentalCategory() {
           m.rands_value ??
           0;
         const monthCharges = Number(rawMonthCharges) || 0;
-
         const monthEnergy = Number(m.energyKWh ?? m.energy_kwh ?? 0) || 0;
 
         let monthCo2Raw =
@@ -1250,10 +1199,8 @@ export default function EnvironmentalCategory() {
           m.co2_t ??
           m.emissions_tonnes ??
           null;
-
         let monthCo2 = monthCo2Raw != null ? Number(monthCo2Raw) : NaN;
 
-        // UPDATED: Use new formula for carbon calculation
         if (Number.isNaN(monthCo2)) {
           monthCo2 = monthEnergy * EF_ELECTRICITY_T_PER_KWH;
         }
@@ -1306,7 +1253,30 @@ export default function EnvironmentalCategory() {
     return groups;
   }, [monthLevelRows]);
 
-  // ---------- Invoice chart data ----------
+  const groupedInvoices = useMemo(() => {
+    const map = new Map();
+
+    lastSixInvoicesChrono.forEach((inv) => {
+      const company = getCompanyName(inv);
+      const taxInvoice = getTaxInvoiceIdentifier(inv);
+      const key = `${company}||${taxInvoice || ""}`;
+
+      if (!map.has(key)) {
+        map.set(key, {
+          company,
+          rows: [],
+        });
+      }
+
+      map.get(key).rows.push({
+        ...inv,
+        tax_invoice_number: taxInvoice,
+      });
+    });
+
+    return Array.from(map.values());
+  }, [lastSixInvoicesChrono]);
+
   const invoiceChartData = useMemo(() => {
     if (monthLevelRows.length === 0) return [];
 
@@ -1358,41 +1328,97 @@ export default function EnvironmentalCategory() {
     Array.isArray(invoiceAiInsights) &&
     invoiceAiInsights.length > 0;
 
-  // ---------- DOWNLOAD ENVIRONMENTAL REPORT (PDF) ----------
   const handleDownloadEnvReport = () => {
     const doc = new jsPDF();
     doc.text("AfricaESG Environmental Report", 20, 20);
     doc.save("AfricaESG_Environmental_Report.pdf");
   };
 
-  // Radar chart data for environmental performance
   const radarData = [
-    { subject: 'Energy', A: totalEnergy / 10000, fullMark: 1 },
-    { subject: 'Carbon', A: avgCarbon / 10, fullMark: 1 },
-    { subject: 'Waste', A: totalWaste / 100, fullMark: 1 },
-    { subject: 'Fuel', A: totalFuel / 5000, fullMark: 1 },
-    { subject: 'Water', A: totalWater / 500, fullMark: 1 },
-    { subject: 'Efficiency', A: 0.7, fullMark: 1 },
+    { subject: "Energy", A: totalEnergy / 10000, fullMark: 1 },
+    { subject: "Carbon", A: avgCarbon / 10, fullMark: 1 },
+    { subject: "Waste", A: totalWaste / 100, fullMark: 1 },
+    { subject: "Fuel", A: totalFuel / 5000, fullMark: 1 },
+    { subject: "Water", A: totalWater / 500, fullMark: 1 },
+    { subject: "Efficiency", A: 0.7, fullMark: 1 },
   ];
 
-  // Handle clicking on invoice-related KPI cards
   const handleInvoiceKpiClick = () => {
-    setActiveTab('invoices');
+    setActiveTab("invoices");
   };
 
-  // ---------- TAB CONTENT ----------
+  // ---------- ENERGY TAB DATA (two charts) ----------
+  const energyTabData = useMemo(() => {
+    return chartData.map((row) => {
+      const energyVal = row.energy || 0;
+      const carbonVal =
+        row.carbon != null
+          ? row.carbon
+          : energyVal * EF_ELECTRICITY_T_PER_KWH;
+
+      const energyIntensity = energyVal / 1000;
+      const carbonIntensity =
+        energyVal > 0 ? carbonVal / energyVal : 0;
+
+      return {
+        name: row.name,
+        energy: energyVal,
+        energyIntensity,
+        carbonIntensity,
+      };
+    });
+  }, [chartData]);
+
+  // ---------- PER-RESOURCE CHART DATA FOR OTHER TABS ----------
+  const carbonChartData = useMemo(
+    () =>
+      chartData.map((row) => ({
+        name: row.name,
+        carbon: row.carbon || 0,
+      })),
+    [chartData]
+  );
+
+  const waterChartData = useMemo(
+    () =>
+      chartData.map((row) => ({
+        name: row.name,
+        water: row.water || 0,
+      })),
+    [chartData]
+  );
+
+  const wasteChartData = useMemo(
+    () =>
+      chartData.map((row) => ({
+        name: row.name,
+        waste: row.waste || 0,
+      })),
+    [chartData]
+  );
+
+  const fuelChartData = useMemo(
+    () =>
+      chartData.map((row) => ({
+        name: row.name,
+        fuel: row.fuel || 0,
+      })),
+    [chartData]
+  );
+
   const renderTabContent = () => {
     switch (activeTab) {
       case "invoices":
         return (
           <div className="space-y-6">
-            {/* Invoice Processing Section */}
             <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">Invoice Management</h2>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    Invoice Records
+                  </h2>
                   <p className="text-sm text-gray-600 mt-1">
-                    Upload, view, and manage PDF invoices with extracted energy and cost data
+                    View processed invoice data with energy and cost metrics
                   </p>
                 </div>
                 {invoiceSummaries.length > 0 && (
@@ -1405,30 +1431,12 @@ export default function EnvironmentalCategory() {
                   </button>
                 )}
               </div>
-
-              <InvoiceProcessingStatus 
-                loading={invoiceLoading}
-                error={invoiceError}
-                successCount={uploadSuccessCount}
-              />
-
-              <div className="mt-6">
-                <FileUploadArea 
-                  onFileUpload={handleBulkInvoiceUpload}
-                  isLoading={invoiceLoading}
-                />
-              </div>
-            </div>
-
-            {/* Invoice Table */}
-            <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
-              <InvoiceTable 
+              <InvoiceTable
                 invoices={invoiceSummaries}
                 onViewDetails={handleViewInvoiceDetails}
               />
             </div>
 
-            {/* Invoice Summary Cards */}
             {invoiceSummaries.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-6">
@@ -1437,7 +1445,9 @@ export default function EnvironmentalCategory() {
                       <FiZap className="w-6 h-6 text-emerald-600" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-emerald-900">Total Energy</p>
+                      <p className="text-sm font-medium text-emerald-900">
+                        Total Energy
+                      </p>
                       <p className="text-2xl font-bold text-emerald-700">
                         {totalEnergyKwh.toLocaleString()} kWh
                       </p>
@@ -1450,9 +1460,12 @@ export default function EnvironmentalCategory() {
                       <FiDollarSign className="w-6 h-6 text-blue-600" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-blue-900">Total Charges</p>
+                      <p className="text-sm font-medium text-blue-900">
+                        Total Charges
+                      </p>
                       <p className="text-2xl font-bold text-blue-700">
-                        R {totalCurrentCharges.toLocaleString(undefined, {
+                        R{" "}
+                        {totalCurrentCharges.toLocaleString(undefined, {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
@@ -1466,11 +1479,14 @@ export default function EnvironmentalCategory() {
                       <FiCloud className="w-6 h-6 text-rose-600" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-rose-900">Estimated Carbon</p>
+                      <p className="text-sm font-medium text-rose-900">
+                        Estimated Carbon
+                      </p>
                       <p className="text-2xl font-bold text-rose-700">
                         {totalInvoiceCo2Tonnes.toLocaleString(undefined, {
                           maximumFractionDigits: 0,
-                        })} tCO₂e
+                        })}{" "}
+                        tCO₂e
                       </p>
                       <p className="text-xs text-rose-600 mt-1">
                         Calculated as: Energy (kWh) × 0.99 / 1000
@@ -1483,11 +1499,615 @@ export default function EnvironmentalCategory() {
           </div>
         );
 
+      case "energy":
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <KpiCard
+                title="Total Energy"
+                value={(totalEnergyKwh || totalEnergy).toLocaleString()}
+                unit="kWh"
+                icon={FiZap}
+                color="emerald"
+              />
+              <KpiCard
+                title="Carbon Emissions"
+                value={totalInvoiceCo2Tonnes.toLocaleString(undefined, {
+                  maximumFractionDigits: 0,
+                })}
+                unit="tCO₂e"
+                icon={FiCloud}
+                color="red"
+              />
+              <KpiCard
+                title="Water Usage"
+                value={totalWater.toLocaleString()}
+                unit="m³"
+                icon={FiDroplet}
+                color="blue"
+              />
+              <KpiCard
+                title="Waste Generated"
+                value={totalWaste.toFixed(1)}
+                unit="tonnes"
+                icon={FiTrash2}
+                color="blue"
+              />
+              <KpiCard
+                title="Fuel Consumption"
+                value={totalFuel.toLocaleString()}
+                unit="liters"
+                icon={FiTruck}
+                color="amber"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">
+                      Energy vs Energy Intensity
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Energy consumption alongside derived energy intensity
+                    </p>
+                  </div>
+                </div>
+
+                {energyTabData.length ? (
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={energyTabData}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke={chartTheme.grid}
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="name"
+                          tickLine={false}
+                          axisLine={{
+                            stroke: chartTheme.axis,
+                            strokeWidth: 1,
+                          }}
+                          tick={{ fontSize: 12, fill: chartTheme.tick }}
+                        />
+                        <YAxis
+                          yAxisId="left"
+                          tickLine={false}
+                          axisLine={{
+                            stroke: chartTheme.axis,
+                            strokeWidth: 1,
+                          }}
+                          tick={{ fontSize: 12, fill: chartTheme.tick }}
+                        />
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fontSize: 12, fill: chartTheme.tick }}
+                        />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend />
+                        <Line
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey="energy"
+                          name="Energy (kWh)"
+                          stroke={chartTheme.energy}
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                        <Line
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey="energyIntensity"
+                          name="Energy Intensity (scaled)"
+                          stroke={chartTheme.water}
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                          strokeDasharray="5 3"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  renderNoData("energy")
+                )}
+              </div>
+
+              <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">
+                      Energy vs Carbon Intensity
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Energy consumption vs carbon intensity (tCO₂e/kWh)
+                    </p>
+                  </div>
+                </div>
+
+                {energyTabData.length ? (
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={energyTabData}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke={chartTheme.grid}
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="name"
+                          tickLine={false}
+                          axisLine={{
+                            stroke: chartTheme.axis,
+                            strokeWidth: 1,
+                          }}
+                          tick={{ fontSize: 12, fill: chartTheme.tick }}
+                        />
+                        <YAxis
+                          yAxisId="left"
+                          tickLine={false}
+                          axisLine={{
+                            stroke: chartTheme.axis,
+                            strokeWidth: 1,
+                          }}
+                          tick={{ fontSize: 12, fill: chartTheme.tick }}
+                        />
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fontSize: 12, fill: chartTheme.tick }}
+                        />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend />
+                        <Line
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey="energy"
+                          name="Energy (kWh)"
+                          stroke={chartTheme.energy}
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                        <Line
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey="carbonIntensity"
+                          name="Carbon Intensity (tCO₂e/kWh)"
+                          stroke={chartTheme.carbon}
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                          strokeDasharray="4 2"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  renderNoData("carbon intensity")
+                )}
+              </div>
+            </div>
+          </div>
+        );
+
+      case "carbon":
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <KpiCard
+                title="Carbon Emissions"
+                value={totalInvoiceCo2Tonnes.toLocaleString(undefined, {
+                  maximumFractionDigits: 0,
+                })}
+                unit="tCO₂e"
+                icon={FiCloud}
+                color="red"
+              />
+              <KpiCard
+                title="Total Energy"
+                value={(totalEnergyKwh || totalEnergy).toLocaleString()}
+                unit="kWh"
+                icon={FiZap}
+                color="emerald"
+              />
+              <KpiCard
+                title="Waste Generated"
+                value={totalWaste.toFixed(1)}
+                unit="tonnes"
+                icon={FiTrash2}
+                color="blue"
+              />
+              <KpiCard
+                title="Fuel Consumption"
+                value={totalFuel.toLocaleString()}
+                unit="liters"
+                icon={FiTruck}
+                color="amber"
+              />
+              <KpiCard
+                title="Water Usage"
+                value={totalWater.toLocaleString()}
+                unit="m³"
+                icon={FiDroplet}
+                color="blue"
+              />
+            </div>
+
+            <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    Carbon Emissions Trend
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Carbon emissions over time based on uploaded data
+                  </p>
+                </div>
+              </div>
+
+              {carbonChartData.length ? (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={carbonChartData}>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={chartTheme.grid}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="carbon"
+                        name="Carbon (tCO₂e)"
+                        stroke={chartTheme.carbon}
+                        strokeWidth={3}
+                        dot={{ r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                renderNoData("carbon")
+              )}
+            </div>
+          </div>
+        );
+
+      case "water":
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <KpiCard
+                title="Water Usage"
+                value={totalWater.toLocaleString()}
+                unit="m³"
+                icon={FiDroplet}
+                color="blue"
+              />
+              <KpiCard
+                title="Total Energy"
+                value={(totalEnergyKwh || totalEnergy).toLocaleString()}
+                unit="kWh"
+                icon={FiZap}
+                color="emerald"
+              />
+              <KpiCard
+                title="Carbon Emissions"
+                value={totalInvoiceCo2Tonnes.toLocaleString(undefined, {
+                  maximumFractionDigits: 0,
+                })}
+                unit="tCO₂e"
+                icon={FiCloud}
+                color="red"
+              />
+              <KpiCard
+                title="Waste Generated"
+                value={totalWaste.toFixed(1)}
+                unit="tonnes"
+                icon={FiTrash2}
+                color="blue"
+              />
+              <KpiCard
+                title="Fuel Consumption"
+                value={totalFuel.toLocaleString()}
+                unit="liters"
+                icon={FiTruck}
+                color="amber"
+              />
+            </div>
+
+            <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    Water Usage Trend
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Water consumption over time based on uploaded data
+                  </p>
+                </div>
+              </div>
+
+              {waterChartData.length ? (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={waterChartData}>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={chartTheme.grid}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend />
+                      <Area
+                        type="monotone"
+                        dataKey="water"
+                        name="Water (m³)"
+                        stroke={chartTheme.water}
+                        fill={chartTheme.water}
+                        fillOpacity={0.2}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                renderNoData("water")
+              )}
+            </div>
+          </div>
+        );
+
+      case "waste":
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <KpiCard
+                title="Waste Generated"
+                value={totalWaste.toFixed(1)}
+                unit="tonnes"
+                icon={FiTrash2}
+                color="blue"
+              />
+              <KpiCard
+                title="Total Energy"
+                value={(totalEnergyKwh || totalEnergy).toLocaleString()}
+                unit="kWh"
+                icon={FiZap}
+                color="emerald"
+              />
+              <KpiCard
+                title="Carbon Emissions"
+                value={totalInvoiceCo2Tonnes.toLocaleString(undefined, {
+                  maximumFractionDigits: 0,
+                })}
+                unit="tCO₂e"
+                icon={FiCloud}
+                color="red"
+              />
+              <KpiCard
+                title="Water Usage"
+                value={totalWater.toLocaleString()}
+                unit="m³"
+                icon={FiDroplet}
+                color="blue"
+              />
+              <KpiCard
+                title="Fuel Consumption"
+                value={totalFuel.toLocaleString()}
+                unit="liters"
+                icon={FiTruck}
+                color="amber"
+              />
+            </div>
+
+            <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    Waste Generation Trend
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Waste generated over time based on uploaded data
+                  </p>
+                </div>
+              </div>
+
+              {wasteChartData.length ? (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={wasteChartData}>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={chartTheme.grid}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend />
+                      <Bar
+                        dataKey="waste"
+                        name="Waste (t)"
+                        stroke={chartTheme.waste}
+                        fill={chartTheme.waste}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                renderNoData("waste")
+              )}
+            </div>
+          </div>
+        );
+
+      case "fuel":
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <KpiCard
+                title="Fuel Consumption"
+                value={totalFuel.toLocaleString()}
+                unit="liters"
+                icon={FiTruck}
+                color="amber"
+              />
+              <KpiCard
+                title="Total Energy"
+                value={(totalEnergyKwh || totalEnergy).toLocaleString()}
+                unit="kWh"
+                icon={FiZap}
+                color="emerald"
+              />
+              <KpiCard
+                title="Carbon Emissions"
+                value={totalInvoiceCo2Tonnes.toLocaleString(undefined, {
+                  maximumFractionDigits: 0,
+                })}
+                unit="tCO₂e"
+                icon={FiCloud}
+                color="red"
+              />
+              <KpiCard
+                title="Water Usage"
+                value={totalWater.toLocaleString()}
+                unit="m³"
+                icon={FiDroplet}
+                color="blue"
+              />
+              <KpiCard
+                title="Waste Generated"
+                value={totalWaste.toFixed(1)}
+                unit="tonnes"
+                icon={FiTrash2}
+                color="blue"
+              />
+            </div>
+
+            <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    Fuel Usage Trend
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Fuel consumption over time based on uploaded data
+                  </p>
+                </div>
+              </div>
+
+              {fuelChartData.length ? (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={fuelChartData}>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={chartTheme.grid}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="fuel"
+                        name="Fuel (L)"
+                        stroke={chartTheme.fuel}
+                        strokeWidth={3}
+                        dot={{ r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                renderNoData("fuel")
+              )}
+            </div>
+          </div>
+        );
+
       case "overview":
       default:
         return (
           <div className="space-y-6">
-            {/* Environmental Dashboard */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <KpiCard
                 title="Total Energy"
@@ -1530,13 +2150,13 @@ export default function EnvironmentalCategory() {
               />
             </div>
 
-            {/* Main Content Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Energy & Carbon Chart */}
               <div className="lg:col-span-2 bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900">Environmental Performance</h2>
+                    <h2 className="text-xl font-bold text-gray-900">
+                      Environmental Performance
+                    </h2>
                     <p className="text-sm text-gray-600 mt-1">
                       Combined view of energy consumption and carbon emissions
                     </p>
@@ -1544,30 +2164,44 @@ export default function EnvironmentalCategory() {
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                      <span className="text-xs font-medium text-gray-600">Energy</span>
+                      <span className="text-xs font-medium text-gray-600">
+                        Energy
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-full bg-rose-500" />
-                      <span className="text-xs font-medium text-gray-600">Carbon</span>
+                      <span className="text-xs font-medium text-gray-600">
+                        Carbon
+                      </span>
                     </div>
                   </div>
                 </div>
-                
+
                 {hasAnyData ? (
                   <div className="h-80">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} vertical={false} />
+                      <LineChart data={energyChartData}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke={chartTheme.grid}
+                          vertical={false}
+                        />
                         <XAxis
                           dataKey="name"
                           tickLine={false}
-                          axisLine={{ stroke: chartTheme.axis, strokeWidth: 1 }}
+                          axisLine={{
+                            stroke: chartTheme.axis,
+                            strokeWidth: 1,
+                          }}
                           tick={{ fontSize: 12, fill: chartTheme.tick }}
                         />
                         <YAxis
                           yAxisId="left"
                           tickLine={false}
-                          axisLine={{ stroke: chartTheme.axis, strokeWidth: 1 }}
+                          axisLine={{
+                            stroke: chartTheme.axis,
+                            strokeWidth: 1,
+                          }}
                           tick={{ fontSize: 12, fill: chartTheme.tick }}
                         />
                         <YAxis
@@ -1608,24 +2242,32 @@ export default function EnvironmentalCategory() {
                 )}
               </div>
 
-              {/* Performance Radar */}
               <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900">Performance Overview</h2>
+                    <h2 className="text-xl font-bold text-gray-900">
+                      Performance Overview
+                    </h2>
                     <p className="text-sm text-gray-600 mt-1">
                       Environmental performance across key metrics
                     </p>
                   </div>
                   <FaChartPie className="w-6 h-6 text-gray-400" />
                 </div>
-                
+
                 <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
                     <RadarChart outerRadius={90} data={radarData}>
                       <PolarGrid stroke={chartTheme.grid} />
-                      <PolarAngleAxis dataKey="subject" tick={{ fill: chartTheme.tick, fontSize: 12 }} />
-                      <PolarRadiusAxis angle={30} domain={[0, 1]} tick={{ fill: chartTheme.tick, fontSize: 10 }} />
+                      <PolarAngleAxis
+                        dataKey="subject"
+                        tick={{ fill: chartTheme.tick, fontSize: 12 }}
+                      />
+                      <PolarRadiusAxis
+                        angle={30}
+                        domain={[0, 1]}
+                        tick={{ fill: chartTheme.tick, fontSize: 10 }}
+                      />
                       <Radar
                         name="Performance"
                         dataKey="A"
@@ -1639,117 +2281,165 @@ export default function EnvironmentalCategory() {
               </div>
             </div>
 
-            {/* Invoice Processing Section */}
-            <div id="invoice-processing-section" className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
-              <div className="flex items-center justify-between mb-6">
+            <section className="bg-white/90 backdrop-blur rounded-2xl shadow-lg border border-gray-200 p-6 space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">Invoice PDF Processing</h2>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Upload bulk PDF invoices to extract energy, cost, and carbon data for analysis
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-800">
+                    Invoice PDF Processing
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-1 max-w-xl">
+                    Upload bulk PDF invoices and view cost &amp; usage data per
+                    invoice. Energy reflects the last 6 months on each invoice.
                   </p>
                 </div>
-                {invoiceSummaries.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-emerald-700">
-                      {invoiceSummaries.length} invoice{invoiceSummaries.length > 1 ? 's' : ''} processed
-                    </span>
-                    <button
-                      onClick={handleInvoiceKpiClick}
-                      className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-800"
-                    >
-                      View All
-                    </button>
-                  </div>
-                )}
+
+                <div className="flex flex-wrap gap-2">
+                  <label className="inline-flex items-center gap-2 bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-full text-xs sm:text-sm font-medium shadow-md hover:shadow-lg cursor-pointer transition-all">
+                    <FaFilePdf />
+                    Bulk Invoices (PDF)
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      multiple
+                      className="hidden"
+                      onChange={(e) =>
+                        handleBulkInvoiceUpload(e.target.files)
+                      }
+                    />
+                  </label>
+                </div>
               </div>
 
-              <InvoiceProcessingStatus 
+              <InvoiceProcessingStatus
                 loading={invoiceLoading}
                 error={invoiceError}
                 successCount={uploadSuccessCount}
               />
 
-              <div className="mt-6">
-                <FileUploadArea 
-                  onFileUpload={handleBulkInvoiceUpload}
-                  isLoading={invoiceLoading}
-                />
-              </div>
-
-              {/* Invoice Summary Table */}
-              {invoiceSummaries.length > 0 && (
-                <div className="mt-8">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">Recent Invoices</h3>
-                    <button
-                      onClick={handleInvoiceKpiClick}
-                      className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-800"
-                    >
-                      View All Invoices
-                    </button>
+              {totalInvoices > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-2">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                      Invoice PDFs
+                    </div>
+                    <div className="text-xl font-bold text-slate-900 mt-1">
+                      {invoiceSummaries.length}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      Total processed invoice PDFs
+                    </div>
                   </div>
-                  
-                  <div className="overflow-x-auto rounded-xl border border-gray-200">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                            Company
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                            Invoice Date
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                            Energy (kWh)
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                            Charges (R)
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200 bg-white">
-                        {invoiceSummaries.slice(0, 5).map((invoice, index) => {
-                          const sixMonthEnergy = getInvoiceSixMonthEnergy(invoice);
-                          
-                          return (
-                            <tr key={index} className="hover:bg-gray-50">
-                              <td className="px-4 py-3">
-                                <div className="text-sm font-medium text-gray-900 truncate max-w-xs">
-                                  {getCompanyName(invoice)}
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-700">
-                                {invoice.invoice_date || '—'}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-900 font-semibold">
-                                {sixMonthEnergy ? sixMonthEnergy.toLocaleString(undefined, {
-                                  maximumFractionDigits: 0,
-                                }) : '—'}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-900 font-semibold">
-                                {invoice.total_current_charges ? 
-                                  `R ${Number(invoice.total_current_charges).toLocaleString(undefined, {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })}` : '—'}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                      Invoices (last 6 by date)
+                    </div>
+                    <div className="text-xl font-bold text-slate-900 mt-1">
+                      {totalInvoices}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      Most recent 6 invoice records
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">
+                      Total energy (kWh)
+                    </div>
+                    <div className="text-xl font-bold text-emerald-900 mt-1 tabular-nums">
+                      {totalEnergyKwh.toLocaleString(undefined, {
+                        maximumFractionDigits: 0,
+                      })}
+                    </div>
+                    <div className="text-[11px] text-emerald-700/80 mt-0.5">
+                      Aggregated for last 6 invoices
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold text-amber-700 uppercase tracking-wide">
+                      Total amount due (R)
+                    </div>
+                    <div className="text-xl font-bold text-amber-900 mt-1 tabular-nums">
+                      {totalAmountDue.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </div>
+                    <div className="text-[11px] text-amber-700/80 mt-0.5">
+                      Across last 6 invoices
+                    </div>
                   </div>
                 </div>
               )}
-            </div>
 
-            {/* AI Insights Panel - Using SocialCategory structure */}
+              {!invoiceLoading &&
+                !invoiceError &&
+                invoiceSummaries.length === 0 && (
+                  <p className="text-xs text-slate-500">
+                    No invoice PDFs processed yet. Upload a bulk set to see the
+                    extracted data here.
+                  </p>
+                )}
+
+              {!invoiceLoading && lastSixInvoicesChrono.length > 0 && (
+                <div className="overflow-x-auto mt-3">
+                  <table className="min-w-full text-xs sm:text-sm text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50">
+                        <th className="px-2 py-2 font-semibold text-slate-700">
+                          Company
+                        </th>
+                        <th className="px-2 py-2 font-semibold text-slate-700">
+                          Categories
+                        </th>
+                        <th className="px-2 py-2 font-semibold text-slate-700">
+                          Tax Invoice #
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {groupedInvoices.map((group) =>
+                        group.rows.map((inv, idx) => {
+                          const categoriesText = getInvoiceCategoriesText(inv);
+                          const showCompanyCell = idx === 0;
+
+                          return (
+                            <tr
+                              key={`${group.company}-${inv.tax_invoice_number}-${idx}`}
+                              className="border-b border-slate-100 hover:bg-slate-50/60"
+                            >
+                              {showCompanyCell && (
+                                <td
+                                  rowSpan={group.rows.length}
+                                  className="px-2 py-1 align-top font-medium text-slate-900"
+                                >
+                                  {group.company}
+                                </td>
+                              )}
+                              <td className="px-2 py-1 text-slate-700">
+                                {categoriesText}
+                              </td>
+                              <td className="px-2 py-1">
+                                {inv.tax_invoice_number || "—"}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
             <aside className="bg-white rounded-3xl shadow border border-slate-200 p-5 flex flex-col h-full">
               <h2 className="text-lg font-semibold text-slate-900">
                 ESG Environmental – AI Narrative
               </h2>
               <p className="text-xs text-slate-500 mt-1 mb-3">
-                Generated commentary based on your uploaded environmental metrics and invoice data.
+                Generated commentary based on your uploaded environmental
+                metrics and invoice data.
               </p>
 
               <div className="flex-1 min-h-0">
@@ -1757,24 +2447,33 @@ export default function EnvironmentalCategory() {
                   <div className="space-y-4">
                     {[...Array(3)].map((_, i) => (
                       <div key={i} className="animate-pulse">
-                        <div className="h-4 bg-slate-200 rounded w-3/4 mb-2"></div>
-                        <div className="h-3 bg-slate-200 rounded w-full"></div>
+                        <div className="h-4 bg-slate-200 rounded w-3/4 mb-2" />
+                        <div className="h-3 bg-slate-200 rounded w-full" />
                       </div>
                     ))}
                   </div>
                 ) : error || invoiceAiError ? (
                   <div className="p-4 bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 rounded-xl">
-                    <p className="text-rose-600 text-sm">{error || invoiceAiError}</p>
+                    <p className="text-rose-600 text-sm">
+                      {error || invoiceAiError}
+                    </p>
                   </div>
-                ) : hasInvoiceInsights || (environmentalInsights && environmentalInsights.length > 0) ? (
+                ) : hasInvoiceInsights ||
+                  (environmentalInsights &&
+                    environmentalInsights.length > 0) ? (
                   <div className="h-full overflow-hidden">
                     <ul className="h-full overflow-y-auto pr-2 space-y-3">
-                      {(hasInvoiceInsights ? invoiceAiInsights : environmentalInsights || [])
+                      {(hasInvoiceInsights
+                        ? invoiceAiInsights
+                        : environmentalInsights || []
+                      )
                         .slice(0, 8)
                         .map((insight, idx) => (
                           <li key={idx} className="flex items-start gap-3">
-                            <div className="w-2 h-2 bg-sky-500 rounded-full mt-2 flex-shrink-0"></div>
-                            <p className="text-sm text-slate-700 leading-relaxed">{insight}</p>
+                            <div className="w-2 h-2 bg-sky-500 rounded-full mt-2 flex-shrink-0" />
+                            <p className="text-sm text-slate-700 leading-relaxed">
+                              {insight}
+                            </p>
                           </li>
                         ))}
                     </ul>
@@ -1783,7 +2482,8 @@ export default function EnvironmentalCategory() {
                   <div className="text-center py-8">
                     <FiActivity className="w-12 h-12 text-slate-400 mx-auto mb-4" />
                     <p className="text-slate-600 text-sm">
-                      Upload environmental data or invoices to generate AI insights
+                      Upload environmental data or invoices to generate AI
+                      insights
                     </p>
                   </div>
                 )}
@@ -1794,15 +2494,14 @@ export default function EnvironmentalCategory() {
     }
   };
 
-  // Invoice Detail Modal
   const InvoiceDetailModal = () => {
     if (!selectedInvoice) return null;
 
     const sixMonthEnergy = getInvoiceSixMonthEnergy(selectedInvoice);
     const taxInvoice = getTaxInvoiceIdentifier(selectedInvoice);
     const estimatedCarbon = sixMonthEnergy * EF_ELECTRICITY_T_PER_KWH;
-    const history = Array.isArray(selectedInvoice.sixMonthHistory) 
-      ? selectedInvoice.sixMonthHistory 
+    const history = Array.isArray(selectedInvoice.sixMonthHistory)
+      ? selectedInvoice.sixMonthHistory
       : [];
 
     return (
@@ -1825,7 +2524,9 @@ export default function EnvironmentalCategory() {
               <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900">Invoice Details</h2>
+                    <h2 className="text-2xl font-bold text-gray-900">
+                      Invoice Details
+                    </h2>
                     <p className="text-sm text-gray-600 mt-1">
                       Detailed view of extracted invoice data
                     </p>
@@ -1840,23 +2541,28 @@ export default function EnvironmentalCategory() {
               </div>
 
               <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
-                {/* Invoice Header */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                   <div className="space-y-4">
                     <div>
-                      <h3 className="text-sm font-medium text-gray-500 mb-1">Company</h3>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">
+                        Company
+                      </h3>
                       <p className="text-lg font-semibold text-gray-900">
                         {getCompanyName(selectedInvoice)}
                       </p>
                     </div>
                     <div>
-                      <h3 className="text-sm font-medium text-gray-500 mb-1">Filename</h3>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">
+                        Filename
+                      </h3>
                       <p className="text-sm text-gray-900 font-mono">
                         {selectedInvoice.filename}
                       </p>
                     </div>
                     <div>
-                      <h3 className="text-sm font-medium text-gray-500 mb-1">Categories</h3>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">
+                        Categories
+                      </h3>
                       <p className="text-sm text-gray-900">
                         {getInvoiceCategoriesText(selectedInvoice)}
                       </p>
@@ -1864,31 +2570,40 @@ export default function EnvironmentalCategory() {
                   </div>
                   <div className="space-y-4">
                     <div>
-                      <h3 className="text-sm font-medium text-gray-500 mb-1">Invoice Date</h3>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">
+                        Invoice Date
+                      </h3>
                       <p className="text-lg font-semibold text-gray-900">
-                        {selectedInvoice.invoice_date || '—'}
+                        {selectedInvoice.invoice_date || "—"}
                       </p>
                     </div>
                     <div>
-                      <h3 className="text-sm font-medium text-gray-500 mb-1">Tax Invoice #</h3>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">
+                        Tax Invoice #
+                      </h3>
                       <p className="text-lg font-semibold text-gray-900 font-mono">
-                        {taxInvoice || '—'}
+                        {taxInvoice || "—"}
                       </p>
                     </div>
                     <div>
-                      <h3 className="text-sm font-medium text-gray-500 mb-1">Total Charges</h3>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">
+                        Total Charges
+                      </h3>
                       <p className="text-lg font-semibold text-gray-900">
-                        R {selectedInvoice.total_current_charges ? 
-                          Number(selectedInvoice.total_current_charges).toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          }) : '—'}
+                        R{" "}
+                        {selectedInvoice.total_current_charges
+                          ? Number(
+                              selectedInvoice.total_current_charges
+                            ).toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })
+                          : "—"}
                       </p>
                     </div>
                   </div>
                 </div>
 
-                {/* Summary Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                   <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-4">
                     <div className="flex items-center gap-3">
@@ -1896,11 +2611,16 @@ export default function EnvironmentalCategory() {
                         <FiZap className="w-5 h-5 text-emerald-600" />
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-emerald-900">Total Energy</p>
+                        <p className="text-sm font-medium text-emerald-900">
+                          Total Energy
+                        </p>
                         <p className="text-xl font-bold text-emerald-700">
-                          {sixMonthEnergy ? sixMonthEnergy.toLocaleString(undefined, {
-                            maximumFractionDigits: 0,
-                          }) : '—'} kWh
+                          {sixMonthEnergy
+                            ? sixMonthEnergy.toLocaleString(undefined, {
+                                maximumFractionDigits: 0,
+                              })
+                            : "—"}{" "}
+                          kWh
                         </p>
                       </div>
                     </div>
@@ -1911,13 +2631,19 @@ export default function EnvironmentalCategory() {
                         <FiDollarSign className="w-5 h-5 text-blue-600" />
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-blue-900">Total Charges</p>
+                        <p className="text-sm font-medium text-blue-900">
+                          Total Charges
+                        </p>
                         <p className="text-xl font-bold text-blue-700">
-                          R {selectedInvoice.total_current_charges ? 
-                            Number(selectedInvoice.total_current_charges).toLocaleString(undefined, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            }) : '—'}
+                          R{" "}
+                          {selectedInvoice.total_current_charges
+                            ? Number(
+                                selectedInvoice.total_current_charges
+                              ).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })
+                            : "—"}
                         </p>
                       </div>
                     </div>
@@ -1928,19 +2654,25 @@ export default function EnvironmentalCategory() {
                         <FiCloud className="w-5 h-5 text-rose-600" />
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-rose-900">Estimated Carbon</p>
+                        <p className="text-sm font-medium text-rose-900">
+                          Estimated Carbon
+                        </p>
                         <p className="text-xl font-bold text-rose-700">
-                          {sixMonthEnergy ? estimatedCarbon.toFixed(1) : '—'} tCO₂e
+                          {sixMonthEnergy
+                            ? estimatedCarbon.toFixed(1)
+                            : "—"}{" "}
+                          tCO₂e
                         </p>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Monthly Breakdown */}
                 {history.length > 0 && (
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Breakdown</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                      Monthly Breakdown
+                    </h3>
                     <div className="overflow-x-auto rounded-xl border border-gray-200">
                       <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
@@ -1961,20 +2693,36 @@ export default function EnvironmentalCategory() {
                         </thead>
                         <tbody className="divide-y divide-gray-200 bg-white">
                           {history.map((month, index) => {
-                            const monthEnergy = Number(month.energyKWh ?? month.energy_kwh ?? 0) || 0;
-                            const monthCharges = Number(month.total_current_charges ?? month.current_charges ?? 0) || 0;
-                            const monthCarbon = monthEnergy * EF_ELECTRICITY_T_PER_KWH;
-                            
+                            const monthEnergy =
+                              Number(
+                                month.energyKWh ?? month.energy_kwh ?? 0
+                              ) || 0;
+                            const monthCharges =
+                              Number(
+                                month.total_current_charges ??
+                                  month.current_charges ??
+                                  0
+                              ) || 0;
+                            const monthCarbon =
+                              monthEnergy * EF_ELECTRICITY_T_PER_KWH;
+
                             return (
-                              <tr key={index} className="hover:bg-gray-50">
+                              <tr
+                                key={index}
+                                className="hover:bg-gray-50"
+                              >
                                 <td className="px-4 py-3 text-sm text-gray-700">
-                                  {month.month_label || `Month ${index + 1}`}
+                                  {month.month_label ||
+                                    `Month ${index + 1}`}
                                 </td>
                                 <td className="px-4 py-3 text-sm text-gray-900 font-medium">
-                                  {monthEnergy.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                  {monthEnergy.toLocaleString(undefined, {
+                                    maximumFractionDigits: 0,
+                                  })}
                                 </td>
                                 <td className="px-4 py-3 text-sm text-gray-900 font-medium">
-                                  R {monthCharges.toLocaleString(undefined, {
+                                  R{" "}
+                                  {monthCharges.toLocaleString(undefined, {
                                     minimumFractionDigits: 2,
                                     maximumFractionDigits: 2,
                                   })}
@@ -2001,7 +2749,6 @@ export default function EnvironmentalCategory() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto space-y-8">
-        {/* HEADER - Aligned with SocialCategory style */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
           <div>
             <p className="text-xs font-semibold tracking-[0.16em] text-emerald-700 uppercase">
@@ -2011,7 +2758,8 @@ export default function EnvironmentalCategory() {
               ESG – Environmental
             </h1>
             <p className="mt-2 text-sm text-gray-600 max-w-2xl">
-              Energy, carbon, water, waste, and fuel performance with PDF invoice integration for automated data extraction.
+              Energy, carbon, water, waste, and fuel performance with PDF
+              invoice integration for automated data extraction.
             </p>
           </div>
 
@@ -2026,7 +2774,6 @@ export default function EnvironmentalCategory() {
           </motion.button>
         </header>
 
-        {/* TABS - Original EnvironmentalCategory tabs */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -2044,15 +2791,17 @@ export default function EnvironmentalCategory() {
                     onClick={() => setActiveTab(tab.id)}
                     whileHover={{ y: -2 }}
                     whileTap={{ scale: 0.95 }}
-                    className={`group flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all duration-300 ${
+                    className={`group relative flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all duration-300 ${
                       activeTab === tab.id
                         ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg"
                         : "text-gray-700 hover:text-emerald-700 hover:bg-gray-50"
                     }`}
                   >
-                    <Icon className={`w-4 h-4 transition-transform group-hover:scale-110 ${
-                      activeTab === tab.id ? "text-white" : "text-gray-400"
-                    }`} />
+                    <Icon
+                      className={`w-4 h-4 transition-transform group-hover:scale-110 ${
+                        activeTab === tab.id ? "text-white" : "text-gray-400"
+                      }`}
+                    />
                     <span>{tab.label}</span>
                     {activeTab === tab.id && (
                       <motion.div
@@ -2067,7 +2816,6 @@ export default function EnvironmentalCategory() {
           </div>
         </motion.div>
 
-        {/* MAIN CONTENT */}
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -2081,7 +2829,6 @@ export default function EnvironmentalCategory() {
           </motion.div>
         </AnimatePresence>
 
-        {/* FOOTER - Original EnvironmentalCategory footer */}
         <footer className="mt-8 pt-6 border-t border-gray-200 text-center">
           <div className="text-sm text-gray-600">
             <p>Powered by AfricaESG.AI</p>
@@ -2089,7 +2836,6 @@ export default function EnvironmentalCategory() {
         </footer>
       </div>
 
-      {/* Invoice Detail Modal */}
       <InvoiceDetailModal />
     </div>
   );
