@@ -22,12 +22,14 @@ import {
   FaLeaf,
   FaWater,
   FaRecycle,
-  FaUpload,
-  FaImage,
 } from "react-icons/fa";
 import { jsPDF } from "jspdf";
 import { API_BASE_URL } from "../config/api";
 import { SimulationContext } from "../context/SimulationContext";
+
+// ✅ NEW: import static logos from assets (adjust paths/names as needed)
+import MainLogo from "../assets/AfricaESG.AI.png";
+import SecondaryLogo from "../assets/ethekwin.png";
 
 // ---------- Company Name Helper Functions ----------
 const getCompanyNameFromFilename = (filename) => {
@@ -49,32 +51,29 @@ const getCompanyNameFromInvoice = (inv) => {
 // ---------- Helper to extract invoice data from EnvironmentalCategory ----------
 const extractInvoiceDataFromSimulation = (simulation) => {
   if (!simulation?.environmentalMetrics) return null;
-  
+
   const envMetrics = simulation.environmentalMetrics;
-  
-  // Check for uploaded invoice data
+
   if (envMetrics.uploadedInvoiceData && envMetrics.uploadedInvoiceData.length > 0) {
     return envMetrics.uploadedInvoiceData;
   }
-  
-  // Check for invoice rows in uploadedRows
+
   if (envMetrics.uploadedRows && envMetrics.uploadedRows.length > 0) {
-    // Check if rows contain invoice-like data (kWh, electricity, etc.)
     const sampleRow = envMetrics.uploadedRows[0] || {};
-    const hasInvoiceFields = Object.keys(sampleRow).some(key => 
-      key.toLowerCase().includes('kwh') || 
-      key.toLowerCase().includes('electricity') ||
-      key.toLowerCase().includes('energy') ||
-      key.toLowerCase().includes('consumption') ||
-      key.toLowerCase().includes('bill') ||
-      key.toLowerCase().includes('invoice')
+    const hasInvoiceFields = Object.keys(sampleRow).some((key) =>
+      key.toLowerCase().includes("kwh") ||
+      key.toLowerCase().includes("electricity") ||
+      key.toLowerCase().includes("energy") ||
+      key.toLowerCase().includes("consumption") ||
+      key.toLowerCase().includes("bill") ||
+      key.toLowerCase().includes("invoice")
     );
-    
+
     if (hasInvoiceFields) {
       return envMetrics.uploadedRows;
     }
   }
-  
+
   return null;
 };
 
@@ -88,13 +87,12 @@ const computeInvoiceEnergyAndCarbon = (invoices) => {
   if (!invoices || !Array.isArray(invoices)) {
     return { totalEnergyKwh: 0, totalCarbonTonnes: 0 };
   }
-  
+
   let totalEnergyKwh = 0;
   let totalCarbonTonnes = 0;
-  
-  invoices.forEach(invoice => {
-    // Extract energy from various possible field names
-    const energyFields = ['kwh', 'electricity', 'energy', 'consumption', 'usage'];
+
+  invoices.forEach((invoice) => {
+    const energyFields = ["kwh", "electricity", "energy", "consumption", "usage"];
     for (const field of energyFields) {
       if (invoice[field] !== undefined && invoice[field] !== null) {
         const value = parseFloat(invoice[field]);
@@ -104,20 +102,18 @@ const computeInvoiceEnergyAndCarbon = (invoices) => {
         }
       }
     }
-    
-    // Extract carbon or calculate it
+
     if (invoice.carbon_emissions !== undefined && invoice.carbon_emissions !== null) {
       const carbon = parseFloat(invoice.carbon_emissions);
       if (!isNaN(carbon)) {
         totalCarbonTonnes += carbon;
       }
     } else {
-      // Calculate carbon from energy (assuming grid electricity emission factor)
-      const emissionFactor = 0.00085; // tCO2/kWh for South African grid
+      const emissionFactor = 0.00085; // tCO2/kWh
       totalCarbonTonnes += totalEnergyKwh * emissionFactor;
     }
   });
-  
+
   return { totalEnergyKwh, totalCarbonTonnes };
 };
 
@@ -131,36 +127,44 @@ const calculateCarbonIntensity = (totalCarbon, revenue) => {
   return totalCarbon / revenue;
 };
 
-const calculateEmissions = (energyKwh, fuelType = 'electricity') => {
-  // Emission factors (kg CO2 per kWh)
+const calculateEmissions = (energyKwh, fuelType = "electricity") => {
   const emissionFactors = {
-    'electricity': 0.85, // South African grid average
-    'diesel': 2.68,
-    'petrol': 2.31,
-    'natural_gas': 0.2,
-    'coal': 2.9,
+    electricity: 0.85,
+    diesel: 2.68,
+    petrol: 2.31,
+    natural_gas: 0.2,
+    coal: 2.9,
   };
-  
+
   const factor = emissionFactors[fuelType.toLowerCase()] || emissionFactors.electricity;
-  return energyKwh * factor; // Returns kg CO2
+  return energyKwh * factor;
 };
+
+// ✅ helper to load image from assets for jsPDF
+const loadImage = (src) =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
 
 export default function Dashboard() {
   const navigate = useNavigate();
 
-  // Pull simulation data (same used by EnvironmentalCategory)
   const simulation = useContext(SimulationContext);
   const environmentalMetrics = simulation?.environmentalMetrics;
 
-  // --- Extract invoice data from EnvironmentalCategory ---
-  const invoiceData = useMemo(() => extractInvoiceDataFromSimulation(simulation), [simulation]);
+  const invoiceData = useMemo(
+    () => extractInvoiceDataFromSimulation(simulation),
+    [simulation]
+  );
 
-  // --- Company name from uploaded data ---
   const [companyName, setCompanyName] = useState("");
   const [isEditingCompany, setIsEditingCompany] = useState(false);
   const [tempCompanyName, setTempCompanyName] = useState("");
 
-  // --- Invoice-derived metrics ---
   const [invoiceMetrics, setInvoiceMetrics] = useState({
     totalEnergyKwh: 0,
     totalCarbonTonnes: 0,
@@ -174,21 +178,18 @@ export default function Dashboard() {
     carbonIntensity: 0,
   });
 
-  // --- ESG Summary (strings for UI) ---
   const [esgSummary, setEsGSummary] = useState({
     environmental: "Energy: -- kWh · Renewables: --% · Carbon: -- tCO₂e",
     social: "Supplier diversity: --% · Customer satisfaction: --% · Human capital: --%",
     governance: "Corporate governance: -- · ISO 9001: -- · Ethics: --",
   });
 
-  // Structured summary for easier programmatic use
   const [summaryData, setSummaryData] = useState({
     environmental: {},
     social: {},
     governance: {},
   });
 
-  // --- KPI States (financial / carbon) ---
   const [carbonTax, setCarbonTax] = useState(0);
   const [prevCarbonTax, setPrevCarbonTax] = useState(null);
 
@@ -201,10 +202,7 @@ export default function Dashboard() {
   const [energySavings, setEnergySavings] = useState(0);
   const [prevEnergySavings, setPrevEnergySavings] = useState(null);
 
-  // Combined AI insights (for PDF download)
   const [aiInsights, setAIInsights] = useState([]);
-
-  // AI mini report (overall ESG)
   const [miniReport, setMiniReport] = useState({
     baseline: "",
     benchmark: "",
@@ -215,14 +213,11 @@ export default function Dashboard() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState(null);
 
-  // Live pillar AI (E / S / G)
   const [pillarAiLoading, setPillarAiLoading] = useState(false);
   const [pillarAiError, setPillarAiError] = useState(null);
 
-  // --- Red flags ---
   const [redFlags, setRedFlags] = useState([]);
 
-  // Platform KPI stats (headline cards)
   const [platformStats, setPlatformStats] = useState({
     countries_supported: 50,
     esg_reports_generated: 10000,
@@ -230,21 +225,11 @@ export default function Dashboard() {
     ai_support_mode: "24/7",
   });
 
-  // Invoice summaries for dashboard-level energy/carbon baseline
   const [invoiceSummaries, setInvoiceSummaries] = useState([]);
 
-  // Invoice Environmental AI (backend /api/invoice-environmental-insights)
   const [invoiceEnvMetrics, setInvoiceEnvMetrics] = useState(null);
   const [invoiceEnvInsights, setInvoiceEnvInsights] = useState([]);
   const [invoiceEnvError, setInvoiceEnvError] = useState(null);
-
-  // --- Company logo state (from invoices or direct upload) ---
-  const [companyLogo, setCompanyLogo] = useState(null); // data URL base64
-  const [logoLoading, setLogoLoading] = useState(false);
-
-  // State for second logo upload
-  const [secondLogo, setSecondLogo] = useState(null);
-  const [secondLogoLoading, setSecondLogoLoading] = useState(false);
 
   // ---------- Process Invoice Data from EnvironmentalCategory ----------
   useEffect(() => {
@@ -258,14 +243,17 @@ export default function Dashboard() {
       let waterConsumption = 0;
       let wasteGenerated = 0;
 
-      invoiceData.forEach((item, index) => {
-        // Extract energy consumption (kWh)
-        const energy = extractNumericValue(item, ['kwh', 'electricity', 'energy', 'consumption']);
+      invoiceData.forEach((item) => {
+        const energy = extractNumericValue(item, [
+          "kwh",
+          "electricity",
+          "energy",
+          "consumption",
+        ]);
         if (energy) {
           totalEnergy += energy;
           peakConsumption = Math.max(peakConsumption, energy);
-          
-          // Group by month for monthly average
+
           const date = extractDate(item);
           if (date) {
             const monthKey = `${date.getFullYear()}-${date.getMonth() + 1}`;
@@ -273,44 +261,45 @@ export default function Dashboard() {
           }
         }
 
-        // Extract cost
-        const cost = extractNumericValue(item, ['cost', 'amount', 'total', 'price']);
+        const cost = extractNumericValue(item, ["cost", "amount", "total", "price"]);
         if (cost) totalCost += cost;
 
-        // Extract water consumption
-        const water = extractNumericValue(item, ['water', 'water_usage', 'water_consumption']);
+        const water = extractNumericValue(item, [
+          "water",
+          "water_usage",
+          "water_consumption",
+        ]);
         if (water) waterConsumption += water;
 
-        // Extract waste
-        const waste = extractNumericValue(item, ['waste', 'waste_generated', 'landfill']);
+        const waste = extractNumericValue(item, [
+          "waste",
+          "waste_generated",
+          "landfill",
+        ]);
         if (waste) wasteGenerated += waste;
       });
 
-      // Calculate monthly average
-      const monthlyAverage = Object.values(monthlyData).length > 0 
-        ? Object.values(monthlyData).reduce((a, b) => a + b, 0) / Object.values(monthlyData).length
-        : totalEnergy / (invoiceData.length || 1);
+      const monthlyAverage =
+        Object.values(monthlyData).length > 0
+          ? Object.values(monthlyData).reduce((a, b) => a + b, 0) /
+            Object.values(monthlyData).length
+          : totalEnergy / (invoiceData.length || 1);
 
-      // Calculate carbon emissions
-      const carbonEmissions = calculateEmissions(totalEnergy, 'electricity');
+      const carbonEmissions = calculateEmissions(totalEnergy, "electricity");
 
-      // Calculate intensities (assuming some revenue/production data)
-      const revenue = 1000000; // Default assumption, should be replaced with actual data
+      const revenue = 1000000;
       const energyIntensity = calculateEnergyIntensity(totalEnergy, revenue);
       const carbonIntensity = calculateCarbonIntensity(carbonEmissions, revenue);
 
-      // Estimate cost savings potential (10% of total cost)
       const costSavingsPotential = totalCost * 0.1;
 
-      // Estimate renewable percentage (check for renewable data in invoice)
       const renewableEnergy = extractRenewableEnergy(invoiceData);
-      const renewablePercentage = renewableEnergy > 0 
-        ? (renewableEnergy / totalEnergy) * 100 
-        : 0;
+      const renewablePercentage =
+        renewableEnergy > 0 ? (renewableEnergy / totalEnergy) * 100 : 0;
 
       setInvoiceMetrics({
         totalEnergyKwh: totalEnergy,
-        totalCarbonTonnes: carbonEmissions / 1000, // Convert to tonnes
+        totalCarbonTonnes: carbonEmissions / 1000,
         monthlyAverage,
         peakConsumption,
         costSavingsPotential,
@@ -321,7 +310,6 @@ export default function Dashboard() {
         carbonIntensity,
       });
 
-      // Update ESG summary with invoice data
       updateEsgSummaryWithInvoiceData({
         totalEnergy,
         carbonEmissions,
@@ -334,15 +322,14 @@ export default function Dashboard() {
     processInvoiceData();
   }, [invoiceData]);
 
-  // Helper function to extract numeric value from invoice item
   const extractNumericValue = (item, fieldNames) => {
     for (const fieldName of fieldNames) {
       for (const key in item) {
         if (key.toLowerCase().includes(fieldName)) {
           const value = item[key];
-          if (typeof value === 'number') return value;
-          if (typeof value === 'string') {
-            const num = parseFloat(value.replace(/[^\d.-]/g, ''));
+          if (typeof value === "number") return value;
+          if (typeof value === "string") {
+            const num = parseFloat(value.replace(/[^\d.-]/g, ""));
             if (!isNaN(num)) return num;
           }
         }
@@ -351,9 +338,8 @@ export default function Dashboard() {
     return 0;
   };
 
-  // Helper function to extract date from invoice item
   const extractDate = (item) => {
-    const dateFields = ['date', 'period', 'month', 'invoice_date', 'billing_date'];
+    const dateFields = ["date", "period", "month", "invoice_date", "billing_date"];
     for (const fieldName of dateFields) {
       for (const key in item) {
         if (key.toLowerCase().includes(fieldName)) {
@@ -362,30 +348,34 @@ export default function Dashboard() {
             try {
               return new Date(value);
             } catch (e) {
-              // Try to parse common date formats
-              const dateMatch = value.match(/\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/);
+              const dateMatch = String(value).match(/\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/);
               if (dateMatch) return new Date(dateMatch[0]);
             }
           }
         }
       }
     }
-    return new Date(); // Default to current date
+    return new Date();
   };
 
-  // Helper function to extract renewable energy data
   const extractRenewableEnergy = (invoiceData) => {
     let totalRenewable = 0;
-    invoiceData.forEach(item => {
-      const renewableFields = ['renewable', 'solar', 'wind', 'hydro', 'green_energy'];
+    invoiceData.forEach((item) => {
+      const renewableFields = [
+        "renewable",
+        "solar",
+        "wind",
+        "hydro",
+        "green_energy",
+      ];
       for (const fieldName of renewableFields) {
         for (const key in item) {
           if (key.toLowerCase().includes(fieldName)) {
             const value = item[key];
-            if (typeof value === 'number') {
+            if (typeof value === "number") {
               totalRenewable += value;
-            } else if (typeof value === 'string') {
-              const num = parseFloat(value.replace(/[^\d.-]/g, ''));
+            } else if (typeof value === "string") {
+              const num = parseFloat(value.replace(/[^\d.-]/g, ""));
               if (!isNaN(num)) totalRenewable += num;
             }
           }
@@ -395,18 +385,20 @@ export default function Dashboard() {
     return totalRenewable;
   };
 
-  // Update ESG summary with invoice data
   const updateEsgSummaryWithInvoiceData = (data) => {
     const newSummary = {
-      environmental: `Energy: ${data.totalEnergy.toLocaleString()} kWh · Renewables: ${data.renewablePercentage.toFixed(1)}% · Carbon: ${(data.carbonEmissions / 1000).toLocaleString()} tCO₂e`,
-      social: esgSummary.social,
-      governance: esgSummary.governance,
+      environmental: `Energy: ${data.totalEnergy.toLocaleString()} kWh · Renewables: ${data.renewablePercentage.toFixed(
+        1
+      )}% · Carbon: ${(data.carbonEmissions / 1000).toLocaleString()} tCO₂e`,
     };
-    
-    setEsGSummary(newSummary);
-    
-    // Update summary data structure
-    setSummaryData(prev => ({
+
+    setEsGSummary((prev) => ({
+      environmental: newSummary.environmental,
+      social: prev.social,
+      governance: prev.governance,
+    }));
+
+    setSummaryData((prev) => ({
       ...prev,
       environmental: {
         ...prev.environmental,
@@ -415,7 +407,7 @@ export default function Dashboard() {
         renewableEnergyShare: data.renewablePercentage,
         waterConsumption: data.waterConsumption,
         wasteGenerated: data.wasteGenerated,
-      }
+      },
     }));
   };
 
@@ -424,7 +416,7 @@ export default function Dashboard() {
     if (isEditingCompany && tempCompanyName.trim()) {
       const newName = tempCompanyName.trim();
       setCompanyName(newName);
-      localStorage.setItem('companyName', newName);
+      localStorage.setItem("companyName", newName);
       setIsEditingCompany(false);
     } else {
       setTempCompanyName(companyName || "");
@@ -439,70 +431,74 @@ export default function Dashboard() {
 
   const handleCompanyNameSave = async () => {
     if (!tempCompanyName.trim()) return;
-    
+
     const newName = tempCompanyName.trim();
     setCompanyName(newName);
-    localStorage.setItem('companyName', newName);
-    
+    localStorage.setItem("companyName", newName);
+
     try {
       await fetch(`${API_BASE_URL}/api/company-name`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ company_name: newName }),
       });
     } catch (error) {
-      console.warn('Failed to save company name to backend:', error);
+      console.warn("Failed to save company name to backend:", error);
     }
-    
+
     setIsEditingCompany(false);
   };
 
-  // ---------- Extract Company Name from Invoice Data ----------
   useEffect(() => {
     const extractCompanyName = () => {
-      // Try invoice data first
       if (invoiceData && invoiceData.length > 0) {
         const sample = invoiceData[0];
-        
-        // Look for company name fields
-        const companyFields = ['company', 'company_name', 'client', 'client_name', 'customer', 'customer_name'];
+
+        const companyFields = [
+          "company",
+          "company_name",
+          "client",
+          "client_name",
+          "customer",
+          "customer_name",
+        ];
         for (const field of companyFields) {
-          if (sample[field] && typeof sample[field] === 'string') {
+          if (sample[field] && typeof sample[field] === "string") {
             const name = sample[field].trim();
             if (name && name !== "—" && name !== "Company Name") {
               return name;
             }
           }
         }
-        
-        // Check all keys for company-like data
+
         for (const key in sample) {
-          if (key.toLowerCase().includes('company') || 
-              key.toLowerCase().includes('client') || 
-              key.toLowerCase().includes('customer')) {
+          if (
+            key.toLowerCase().includes("company") ||
+            key.toLowerCase().includes("client") ||
+            key.toLowerCase().includes("customer")
+          ) {
             const value = sample[key];
-            if (typeof value === 'string' && value.trim() && !value.match(/^\d+$/)) {
+            if (typeof value === "string" && value.trim() && !value.match(/^\d+$/)) {
               return value.trim();
             }
           }
         }
       }
-      
-      // Fallback to existing logic
-      const savedCompany = localStorage.getItem('companyName');
+
+      const savedCompany = localStorage.getItem("companyName");
       if (savedCompany && savedCompany.trim() && savedCompany.trim() !== "Company Name") {
         return savedCompany.trim();
       }
-      
+
       return "";
     };
 
     const name = extractCompanyName();
     if (name) {
       setCompanyName(name);
-      localStorage.setItem('companyName', name);
+      localStorage.setItem("companyName", name);
     }
   }, [invoiceData, summaryData, environmentalMetrics, invoiceSummaries]);
 
@@ -513,25 +509,44 @@ export default function Dashboard() {
     }
 
     const diff = current - previous;
-    const pctChange = previous === 0
-      ? (current === 0 ? 0 : 100)
-      : (diff / previous) * 100;
+    const pctChange =
+      previous === 0 ? (current === 0 ? 0 : 100) : (diff / previous) * 100;
 
     const formatted = (diff > 0 ? "+" : "") + pctChange.toFixed(1) + "%";
     const isUp = diff > 0;
     const isDown = diff < 0;
-    const color = isUp ? "text-emerald-600" : isDown ? "text-red-600" : "text-gray-500";
+    const color = isUp
+      ? "text-emerald-600"
+      : isDown
+      ? "text-red-600"
+      : "text-gray-500";
 
     return (
-      <div className={`flex items-center gap-1 text-[11px] font-semibold ${color} h-5`}>
+      <div
+        className={`flex items-center gap-1 text-[11px] font-semibold ${color} h-5`}
+      >
         {isUp && (
           <svg width="12" height="12" viewBox="0 0 24 24" className="shrink-0">
-            <path d="M4 16 L12 8 L20 16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M4 16 L12 8 L20 16"
+              stroke="currentColor"
+              strokeWidth="2"
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         )}
         {isDown && (
           <svg width="12" height="12" viewBox="0 0 24 24" className="shrink-0">
-            <path d="M4 8 L12 16 L20 8" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M4 8 L12 16 L20 8"
+              stroke="currentColor"
+              strokeWidth="2"
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         )}
         {!isUp && !isDown && (
@@ -552,47 +567,60 @@ export default function Dashboard() {
     const soc = summary?.social ?? {};
     const gov = summary?.governance ?? {};
 
-    // Check renewable share
-    const renewableShare = env.renewableEnergyShare !== undefined
-      ? env.renewableEnergyShare
-      : invoiceMetrics.renewablePercentage;
-    
+    const renewableShare =
+      env.renewableEnergyShare !== undefined
+        ? env.renewableEnergyShare
+        : invoiceMetrics.renewablePercentage;
+
     if (renewableShare !== null && renewableShare < 20) {
-      flags.push(`Renewable energy share is only ${renewableShare.toFixed(1)}%. This is below the 20% threshold.`);
+      flags.push(
+        `Renewable energy share is only ${renewableShare.toFixed(
+          1
+        )}%. This is below the 20% threshold.`
+      );
     }
 
-    // Check carbon tax exposure
     const carbonTaxValue = metrics?.carbonTax ?? 0;
     if (carbonTaxValue > 20000000) {
-      flags.push(`Carbon tax exposure (R ${carbonTaxValue.toLocaleString()}) is above the defined risk threshold.`);
+      flags.push(
+        `Carbon tax exposure (R ${carbonTaxValue.toLocaleString()}) is above the defined risk threshold.`
+      );
     }
 
-    // Check energy savings potential
     const totalEnergy = env.totalEnergyConsumption ?? invoiceMetrics.totalEnergyKwh;
     if (totalEnergy > 0) {
-      const savingsPct = (invoiceMetrics.costSavingsPotential / (totalEnergy * 0.15)) * 100; // Assuming R0.15/kWh
+      const savingsPct =
+        (invoiceMetrics.costSavingsPotential / (totalEnergy * 0.15)) * 100;
       if (savingsPct > 10) {
-        flags.push(`Significant cost savings potential (${savingsPct.toFixed(1)}%) identified from invoice analysis.`);
+        flags.push(
+          `Significant cost savings potential (${savingsPct.toFixed(
+            1
+          )}%) identified from invoice analysis.`
+        );
       }
     }
 
-    // Check peak consumption
     if (invoiceMetrics.peakConsumption > invoiceMetrics.monthlyAverage * 1.5) {
-      flags.push(`Peak energy consumption (${invoiceMetrics.peakConsumption.toLocaleString()} kWh) is significantly above monthly average.`);
+      flags.push(
+        `Peak energy consumption (${invoiceMetrics.peakConsumption.toLocaleString()} kWh) is significantly above monthly average.`
+      );
     }
 
     if (soc.supplierDiversity !== undefined && soc.supplierDiversity < 5) {
-      flags.push(`Supplier diversity (${soc.supplierDiversity}%) is low – this may create concentration and social risk.`);
+      flags.push(
+        `Supplier diversity (${soc.supplierDiversity}%) is low – this may create concentration and social risk.`
+      );
     }
 
     if (gov.totalComplianceFindings && gov.totalComplianceFindings > 0) {
-      flags.push(`There are ${gov.totalComplianceFindings} open compliance findings – review governance actions.`);
+      flags.push(
+        `There are ${gov.totalComplianceFindings} open compliance findings – review governance actions.`
+      );
     }
 
     return flags;
   };
 
-  // ---------- Apply snapshot from backend ----------
   const applySnapshotFromBackend = (esgData) => {
     const mock = esgData?.mockData || {};
     const summary = mock.summary || {};
@@ -609,9 +637,21 @@ export default function Dashboard() {
     }
 
     setEsGSummary({
-      environmental: `Energy: ${(envSummary.totalEnergyConsumption ?? 0)} kWh · Renewables: ${(envSummary.renewableEnergyShare ?? "--")}% · Carbon: ${(envSummary.carbonEmissions ?? 0).toLocaleString()} tCO₂e`,
-      social: `Supplier diversity: ${(socSummary.supplierDiversity ?? "--")}% · Customer satisfaction: ${(socSummary.customerSatisfaction ?? "--")}% · Human capital: ${(socSummary.humanCapital ?? "--")}%`,
-      governance: `Corporate governance: ${(govSummary.corporateGovernance ?? "--")} · ISO 9001: ${(govSummary.iso9001Compliance ?? "--")} · Ethics: ${(govSummary.businessEthics ?? "--")}`,
+      environmental: `Energy: ${
+        envSummary.totalEnergyConsumption ?? 0
+      } kWh · Renewables: ${
+        envSummary.renewableEnergyShare ?? "--"
+      }% · Carbon: ${(envSummary.carbonEmissions ?? 0).toLocaleString()} tCO₂e`,
+      social: `Supplier diversity: ${
+        socSummary.supplierDiversity ?? "--"
+      }% · Customer satisfaction: ${
+        socSummary.customerSatisfaction ?? "--"
+      }% · Human capital: ${socSummary.humanCapital ?? "--"}%`,
+      governance: `Corporate governance: ${
+        govSummary.corporateGovernance ?? "--"
+      } · ISO 9001: ${govSummary.iso9001Compliance ?? "--"} · Ethics: ${
+        govSummary.businessEthics ?? "--"
+      }`,
     });
 
     setPrevCarbonTax(carbonTax);
@@ -630,7 +670,6 @@ export default function Dashboard() {
     setAIInsights(combinedList);
   };
 
-  // ---------- Load snapshot from backend ----------
   const loadSnapshotFromBackend = async () => {
     setAiLoading(true);
     setAiError(null);
@@ -664,12 +703,10 @@ export default function Dashboard() {
     }
   };
 
-  // ---- initial load: ESG snapshot ----
   useEffect(() => {
     loadSnapshotFromBackend();
   }, []);
 
-  // ---- live pillar AI ----
   useEffect(() => {
     const loadPillarAI = async () => {
       setPillarAiLoading(true);
@@ -709,7 +746,6 @@ export default function Dashboard() {
     loadPillarAI();
   }, []);
 
-  // Load platform headline stats
   useEffect(() => {
     const loadPlatformStats = async () => {
       try {
@@ -728,7 +764,6 @@ export default function Dashboard() {
     loadPlatformStats();
   }, []);
 
-  // Load invoices for baseline energy & carbon
   useEffect(() => {
     const loadInvoices = async () => {
       try {
@@ -746,12 +781,13 @@ export default function Dashboard() {
     loadInvoices();
   }, []);
 
-  // Load invoice-derived Environmental insights & metrics
   useEffect(() => {
     const loadInvoiceEnvInsights = async () => {
       setInvoiceEnvError(null);
       try {
-        const res = await fetch(`${API_BASE_URL}/api/invoice-environmental-insights?last_n=6`);
+        const res = await fetch(
+          `${API_BASE_URL}/api/invoice-environmental-insights?last_n=6`
+        );
         if (!res.ok) {
           if (res.status === 404) return;
           throw new Error("/api/invoice-environmental-insights error: " + res.status);
@@ -780,109 +816,29 @@ export default function Dashboard() {
         }
       } catch (err) {
         console.warn("Invoice Environmental insights error:", err);
-        setInvoiceEnvError(err.message || "Failed to load invoice-derived Environmental AI insights.");
+        setInvoiceEnvError(
+          err.message || "Failed to load invoice-derived Environmental AI insights."
+        );
       }
     };
 
     loadInvoiceEnvInsights();
   }, []);
 
-  // Update red flags when invoice metrics change
   useEffect(() => {
-    const newFlags = computeRedFlags(summaryData, {
-      carbonTax,
-      taxAllowances,
-      carbonCredits,
-      energySavings,
-    }, invoiceMetrics);
-    
+    const newFlags = computeRedFlags(
+      summaryData,
+      {
+        carbonTax,
+        taxAllowances,
+        carbonCredits,
+        energySavings,
+      },
+      invoiceMetrics
+    );
+
     setRedFlags(newFlags);
   }, [invoiceMetrics, summaryData, carbonTax, taxAllowances, carbonCredits, energySavings]);
-
-  // --- Load company logo from backend/localStorage ---
-  useEffect(() => {
-    const loadCompanyLogo = async () => {
-      setLogoLoading(true);
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/company-logo`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.logo) {
-            setCompanyLogo(data.logo);
-            localStorage.setItem("companyLogo", data.logo);
-          }
-        } else {
-          // fallback to localStorage
-          const savedLogo = localStorage.getItem("companyLogo");
-          if (savedLogo) {
-            setCompanyLogo(savedLogo);
-          }
-        }
-      } catch (error) {
-        console.warn("Failed to load company logo:", error);
-        const savedLogo = localStorage.getItem("companyLogo");
-        if (savedLogo) {
-          setCompanyLogo(savedLogo);
-        }
-      } finally {
-        setLogoLoading(false);
-      }
-    };
-
-    loadCompanyLogo();
-  }, []);
-
-  // --- Logo upload handler (PDF, PNG, JPG, etc.) ---
-  const handleLogoUpload = async (event, isSecondLogo = false) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    if (isSecondLogo) {
-      setSecondLogoLoading(true);
-    } else {
-      setLogoLoading(true);
-    }
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/upload-logo`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await response.json();
-      if (data.success && data.logo) {
-        if (isSecondLogo) {
-          setSecondLogo(data.logo);
-          localStorage.setItem("secondLogo", data.logo);
-        } else {
-          setCompanyLogo(data.logo);
-          localStorage.setItem("companyLogo", data.logo);
-        }
-      } else {
-        console.warn(data.detail || "Failed to extract logo from file");
-      }
-    } catch (error) {
-      console.error("Error uploading logo:", error);
-    } finally {
-      if (isSecondLogo) {
-        setSecondLogoLoading(false);
-      } else {
-        setLogoLoading(false);
-      }
-      event.target.value = "";
-    }
-  };
-
-  // --- Load second logo from localStorage ---
-  useEffect(() => {
-    const savedSecondLogo = localStorage.getItem("secondLogo");
-    if (savedSecondLogo) {
-      setSecondLogo(savedSecondLogo);
-    }
-  }, []);
 
   // ---- TOTAL ENERGY (kWh) FOR DASHBOARD CARD ----
   const dashboardEnergyKWh = useMemo(() => {
@@ -897,13 +853,16 @@ export default function Dashboard() {
       const rows = environmentalMetrics.uploadedRows;
       const sample = rows[0] || {};
       const candidateCols = ["Electricity (kWh)", "Energy (kWh)", "kWh"];
-      const colName = candidateCols.find((c) => Object.prototype.hasOwnProperty.call(sample, c)) || null;
+      const colName =
+        candidateCols.find((c) => Object.prototype.hasOwnProperty.call(sample, c)) ||
+        null;
 
       if (colName) {
         return rows.reduce((sum, row) => {
           const v = row[colName];
           if (v == null) return sum;
-          const num = typeof v === "number" ? v : parseFloat(String(v).replace(/,/g, ""));
+          const num =
+            typeof v === "number" ? v : parseFloat(String(v).replace(/,/g, ""));
           return sum + (Number.isNaN(num) ? 0 : num);
         }, 0);
       }
@@ -930,73 +889,51 @@ export default function Dashboard() {
     return 0;
   }, [invoiceMetrics.totalCarbonTonnes, invoiceSummaries, summaryData]);
 
-  // ---- ESG Environmental summary text for PDF & UI ----
   const envSummaryData = summaryData.environmental || {};
   const socSummaryData = summaryData.social || {};
   const govSummaryData = summaryData.governance || {};
 
-  const environmentalSummaryText = useMemo(() => {
-    const energyText = dashboardEnergyKWh > 0
-      ? dashboardEnergyKWh.toLocaleString() + " kWh"
-      : "-- kWh";
-    
-    const renewablesText = invoiceMetrics.renewablePercentage > 0
-      ? invoiceMetrics.renewablePercentage.toFixed(1) + "%"
-      : (envSummaryData.renewableEnergyShare != null
-        ? envSummaryData.renewableEnergyShare + "%"
-        : "--%");
-    
-    const carbonText = dashboardCarbonTonnes > 0
-      ? dashboardCarbonTonnes.toLocaleString() + " tCO₂e"
-      : "-- tCO₂e";
-
-    return `Energy: ${energyText} · Renewables: ${renewablesText} · Carbon: ${carbonText}`;
-  }, [dashboardEnergyKWh, dashboardCarbonTonnes, invoiceMetrics.renewablePercentage, envSummaryData]);
-
-  // ---- Download ESG Report (PDF) with logo from uploads ----
-  const handleGenerateReport = () => {
+  // ✅ Download ESG Report (PDF) with logos imported from assets
+  const handleGenerateReport = async () => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
-    if (companyLogo) {
+    let headerBottomY = 30;
+    let yPosition;
+
+    try {
+      // Load main logo from assets and add to PDF
+      const mainImg = await loadImage(MainLogo);
+      doc.addImage(mainImg, "PNG", 14, 10, 40, 40);
+
+      // Try secondary logo (optional)
       try {
-        const logoData = companyLogo.replace(/^data:image\/\w+;base64,/, "");
-        doc.addImage(logoData, "PNG", 14, 10, 40, 40);
-
-        if (secondLogo) {
-          try {
-            const secondLogoData = secondLogo.replace(/^data:image\/\w+;base64,/, "");
-            doc.addImage(secondLogoData, "PNG", pageWidth - 40, 28, 25, 25);
-          } catch (error) {
-            console.warn("Failed to add second logo to PDF:", error);
-          }
-        }
-
-        doc.setFontSize(16);
-        doc.setFont("helvetica", "bold");
-        doc.text("ESG Performance Report", pageWidth / 2, 25, {
-          align: "center",
-        });
-
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        doc.text(
-          "Generated by AfricaESG.AI Platform",
-          pageWidth / 2,
-          32,
-          { align: "center" }
-        );
-      } catch (error) {
-        console.warn("Failed to add logo to PDF:", error);
-        doc.setFontSize(20);
-        doc.setFont("helvetica", "bold");
-        doc.text("AfricaESG.AI Overview Report", 14, 20);
+        const secondaryImg = await loadImage(SecondaryLogo);
+        doc.addImage(secondaryImg, "PNG", pageWidth - 40, 28, 25, 25);
+      } catch (e) {
+        console.warn("Failed to load secondary logo:", e);
       }
-    } else {
+
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("ESG Performance Report", pageWidth / 2, 25, {
+        align: "center",
+      });
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text("Generated by AfricaESG.AI Platform", pageWidth / 2, 32, {
+        align: "center",
+      });
+
+      headerBottomY = 55;
+    } catch (error) {
+      console.warn("Failed to load logos from assets:", error);
       doc.setFontSize(20);
       doc.setFont("helvetica", "bold");
       doc.text("AfricaESG.AI Overview Report", 14, 20);
+      headerBottomY = 30;
     }
 
     doc.setFontSize(10);
@@ -1009,10 +946,9 @@ export default function Dashboard() {
     );
 
     doc.setDrawColor(200, 200, 200);
-    const headerBottomY = companyLogo ? 55 : 30;
     doc.line(14, headerBottomY, pageWidth - 14, headerBottomY);
 
-    let yPosition = companyLogo ? 65 : 40;
+    yPosition = headerBottomY + 10;
 
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
@@ -1025,12 +961,16 @@ export default function Dashboard() {
     const reportCompanyName = companyName || "Company Name";
     doc.text(`Company: ${reportCompanyName}`, 14, yPosition);
     yPosition += 7;
-    
+
     if (invoiceData && invoiceData.length > 0) {
-      doc.text(`Data Source: ${invoiceData.length} invoice records analyzed`, 14, yPosition);
+      doc.text(
+        `Data Source: ${invoiceData.length} invoice records analyzed`,
+        14,
+        yPosition
+      );
       yPosition += 7;
     }
-    
+
     doc.text(`Report Period: ${new Date().getFullYear()}`, 14, yPosition);
     yPosition += 10;
 
@@ -1044,15 +984,35 @@ export default function Dashboard() {
     doc.text("Environmental (from Invoice Analysis):", 14, yPosition);
     yPosition += 6;
     doc.setFontSize(10);
-    doc.text(`• Energy Consumption: ${dashboardEnergyKWh.toLocaleString()} kWh`, 20, yPosition);
+    doc.text(
+      `• Energy Consumption: ${dashboardEnergyKWh.toLocaleString()} kWh`,
+      20,
+      yPosition
+    );
     yPosition += 5;
-    doc.text(`• Renewable Energy: ${invoiceMetrics.renewablePercentage.toFixed(1)}%`, 20, yPosition);
+    doc.text(
+      `• Renewable Energy: ${invoiceMetrics.renewablePercentage.toFixed(1)}%`,
+      20,
+      yPosition
+    );
     yPosition += 5;
-    doc.text(`• Carbon Emissions: ${dashboardCarbonTonnes.toLocaleString()} tCO₂e`, 20, yPosition);
+    doc.text(
+      `• Carbon Emissions: ${dashboardCarbonTonnes.toLocaleString()} tCO₂e`,
+      20,
+      yPosition
+    );
     yPosition += 5;
-    doc.text(`• Monthly Average: ${invoiceMetrics.monthlyAverage.toLocaleString()} kWh`, 20, yPosition);
+    doc.text(
+      `• Monthly Average: ${invoiceMetrics.monthlyAverage.toLocaleString()} kWh`,
+      20,
+      yPosition
+    );
     yPosition += 5;
-    doc.text(`• Peak Consumption: ${invoiceMetrics.peakConsumption.toLocaleString()} kWh`, 20, yPosition);
+    doc.text(
+      `• Peak Consumption: ${invoiceMetrics.peakConsumption.toLocaleString()} kWh`,
+      20,
+      yPosition
+    );
     yPosition += 8;
 
     doc.setFontSize(11);
@@ -1060,13 +1020,21 @@ export default function Dashboard() {
     yPosition += 6;
     doc.setFontSize(10);
     doc.text(
-      `• Supplier Diversity: ${socSummaryData.supplierDiversity != null ? `${socSummaryData.supplierDiversity}%` : "--"}`,
+      `• Supplier Diversity: ${
+        socSummaryData.supplierDiversity != null
+          ? `${socSummaryData.supplierDiversity}%`
+          : "--"
+      }`,
       20,
       yPosition
     );
     yPosition += 5;
     doc.text(
-      `• Customer Satisfaction: ${socSummaryData.customerSatisfaction != null ? `${socSummaryData.customerSatisfaction}%` : "--"}`,
+      `• Customer Satisfaction: ${
+        socSummaryData.customerSatisfaction != null
+          ? `${socSummaryData.customerSatisfaction}%`
+          : "--"
+      }`,
       20,
       yPosition
     );
@@ -1076,9 +1044,17 @@ export default function Dashboard() {
     doc.text("Governance:", 14, yPosition);
     yPosition += 6;
     doc.setFontSize(10);
-    doc.text(`• Corporate Governance: ${govSummaryData.corporateGovernance || "--"}`, 20, yPosition);
+    doc.text(
+      `• Corporate Governance: ${govSummaryData.corporateGovernance || "--"}`,
+      20,
+      yPosition
+    );
     yPosition += 5;
-    doc.text(`• ISO 9001 Compliance: ${govSummaryData.iso9001Compliance || "--"}`, 20, yPosition);
+    doc.text(
+      `• ISO 9001 Compliance: ${govSummaryData.iso9001Compliance || "--"}`,
+      20,
+      yPosition
+    );
     yPosition += 10;
 
     doc.setFontSize(14);
@@ -1090,13 +1066,29 @@ export default function Dashboard() {
     doc.setFont("helvetica", "normal");
     doc.text(`• Carbon Tax Exposure: R ${carbonTax.toLocaleString()}`, 20, yPosition);
     yPosition += 5;
-    doc.text(`• Tax Allowances: R ${taxAllowances.toLocaleString()}`, 20, yPosition);
+    doc.text(
+      `• Tax Allowances: R ${taxAllowances.toLocaleString()}`,
+      20,
+      yPosition
+    );
     yPosition += 5;
-    doc.text(`• Carbon Credits: ${carbonCredits.toLocaleString()} tonnes`, 20, yPosition);
+    doc.text(
+      `• Carbon Credits: ${carbonCredits.toLocaleString()} tonnes`,
+      20,
+      yPosition
+    );
     yPosition += 5;
-    doc.text(`• Energy Savings: ${energySavings.toLocaleString()} kWh`, 20, yPosition);
+    doc.text(
+      `• Energy Savings: ${energySavings.toLocaleString()} kWh`,
+      20,
+      yPosition
+    );
     yPosition += 5;
-    doc.text(`• Cost Savings Potential: R ${invoiceMetrics.costSavingsPotential.toLocaleString()}`, 20, yPosition);
+    doc.text(
+      `• Cost Savings Potential: R ${invoiceMetrics.costSavingsPotential.toLocaleString()}`,
+      20,
+      yPosition
+    );
     yPosition += 10;
 
     if (aiInsights && aiInsights.length > 0) {
@@ -1120,21 +1112,27 @@ export default function Dashboard() {
       });
     }
 
-    const filename = reportCompanyName !== "Company Name"
-      ? `${reportCompanyName.replace(/[^a-z0-9]/gi, "_")}_ESG_Report_${new Date().toISOString().split("T")[0]}.pdf`
-      : `AfricaESG_Report_${new Date().toISOString().split("T")[0]}.pdf`;
+    const filename =
+      reportCompanyName !== "Company Name"
+        ? `${reportCompanyName
+            .replace(/[^a-z0-9]/gi, "_")
+            .toUpperCase()}_ESG_Report_${new Date()
+            .toISOString()
+            .split("T")[0]}.pdf`
+        : `AfricaESG_Report_${new Date().toISOString().split("T")[0]}.pdf`;
 
     doc.save(filename);
   };
 
-  // ---- Small helper components ----
   const StatCard = ({ icon, label, value, sub }) => (
     <div className="flex items-center gap-3 rounded-2xl bg-white border border-slate-100 shadow-sm px-4 py-3 h-full">
       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 shrink-0">
         {icon}
       </div>
       <div className="leading-tight">
-        <div className="text-xs text-slate-500 uppercase tracking-wide">{label}</div>
+        <div className="text-xs text-slate-500 uppercase tracking-wide">
+          {label}
+        </div>
         <div className="text-xl font-semibold text-slate-900">{value}</div>
         {sub && <div className="text-[11px] text-slate-500 mt-0.5">{sub}</div>}
       </div>
@@ -1142,13 +1140,19 @@ export default function Dashboard() {
   );
 
   const MoneyCard = ({ icon, label, value, indicator, isFlagged }) => (
-    <div className={`rounded-2xl border shadow-sm px-4 py-3 flex flex-col justify-between gap-2 h-full ${isFlagged ? "bg-red-50 border-red-300" : "bg-white border-slate-100"}`}>
+    <div
+      className={`rounded-2xl border shadow-sm px-4 py-3 flex flex-col justify-between gap-2 h-full ${
+        isFlagged ? "bg-red-50 border-red-300" : "bg-white border-slate-100"
+      }`}
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 shrink-0">
             {icon}
           </span>
-          <span className="text-xs text-slate-600 uppercase tracking-wide font-medium">{label}</span>
+          <span className="text-xs text-slate-600 uppercase tracking-wide font-medium">
+            {label}
+          </span>
         </div>
         {indicator}
       </div>
@@ -1170,14 +1174,18 @@ export default function Dashboard() {
     <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
-            {icon}
-          </div>
+          <div className="p-2 rounded-lg bg-blue-50 text-blue-600">{icon}</div>
           <span className="text-sm font-semibold text-gray-700">{label}</span>
         </div>
         {trend && (
-          <span className={`text-xs font-medium px-2 py-1 rounded-full ${trend > 0 ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
-            {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}%
+          <span
+            className={`text-xs font-medium px-2 py-1 rounded-full ${
+              trend > 0
+                ? "bg-red-100 text-red-800"
+                : "bg-green-100 text-green-800"
+            }`}
+          >
+            {trend > 0 ? "↑" : "↓"} {Math.abs(trend)}%
           </span>
         )}
       </div>
@@ -1189,31 +1197,15 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-lime-50 py-10 font-sans">
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-        {/* Hidden file inputs */}
-        <div style={{ display: 'none' }}>
-          <input
-            type="file"
-            id="logo-upload"
-            accept=".pdf,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.webp"
-            onChange={(e) => handleLogoUpload(e, false)}
-          />
-          <input
-            type="file"
-            id="second-logo-upload"
-            accept=".pdf,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.webp"
-            onChange={(e) => handleLogoUpload(e, true)}
-          />
-        </div>
-
         {/* Header Row */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl sm:text-4xl font-extrabold text-green-900 tracking-tight">
               AfricaESG.AI Dashboard
             </h1>
-            
-            {/* Company Name Display - HIDDEN */}
-            <div style={{ display: 'none' }}>
+
+            {/* Company Name Display - HIDDEN IN UI BUT STILL FUNCTIONAL */}
+            <div style={{ display: "none" }}>
               {isEditingCompany ? (
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 p-3 bg-white rounded-lg border border-emerald-200 shadow-sm mt-2">
                   <div className="flex items-center gap-2">
@@ -1250,7 +1242,9 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2 p-2 hover:bg-white/50 rounded-lg transition-colors mt-2">
                   <FaBuilding className="text-gray-500" />
                   <div className="flex items-center gap-3">
-                    <span className="text-lg font-semibold text-gray-700">{companyName}</span>
+                    <span className="text-lg font-semibold text-gray-700">
+                      {companyName}
+                    </span>
                     <button
                       onClick={handleCompanyNameEdit}
                       className="text-gray-400 hover:text-emerald-600 transition-colors"
@@ -1273,15 +1267,17 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
-            
-            {/* Invoice Data Status */}
+
             {invoiceData && invoiceData.length > 0 && (
               <div className="mt-2 flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
                 <FaChartLine />
-                <span>Analyzing {invoiceData.length} invoice records from EnvironmentalCategory</span>
+                <span>
+                  Analyzing {invoiceData.length} invoice records from
+                  EnvironmentalCategory
+                </span>
               </div>
             )}
-            
+
             <p className="text-sm text-gray-600 max-w-xl mt-3">
               ESG performance overview with AI-enabled insights on carbon tax,
               energy savings, and strategic ESG levers. Baselines are derived
@@ -1314,146 +1310,6 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* Logo Management Section - HIDDEN */}
-        <div style={{ display: 'none' }}>
-          <section className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">
-              Company Logo Management
-            </h2>
-            <p className="text-sm text-gray-600 mb-6">
-              Upload logos that will appear in your ESG reports. Logos are not displayed in the dashboard but will appear in downloaded PDF reports.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Main Logo Upload */}
-              <div className="border border-gray-200 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-medium text-gray-700">Main Company Logo</h3>
-                  <FaImage className="text-emerald-600" />
-                </div>
-                
-                <div className="mb-4">
-                  {companyLogo ? (
-                    <div className="flex flex-col items-center">
-                      <img 
-                        src={companyLogo} 
-                        alt="Company Logo Preview" 
-                        className="h-24 w-auto max-w-full object-contain border border-gray-200 rounded-lg mb-3"
-                      />
-                      <p className="text-xs text-gray-500 text-center">
-                        Logo will appear in PDF reports
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-24 border-2 border-dashed border-gray-300 rounded-lg mb-3">
-                      <FaImage className="text-gray-400 text-3xl mb-2" />
-                      <p className="text-sm text-gray-500">No logo uploaded</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="file"
-                    id="logo-upload"
-                    accept=".pdf,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.webp"
-                    onChange={(e) => handleLogoUpload(e, false)}
-                    className="hidden"
-                  />
-                  <label
-                    htmlFor="logo-upload"
-                    className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg px-4 py-2.5 text-sm font-medium cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    <FaUpload />
-                    {companyLogo ? "Change Main Logo" : "Upload Main Logo"}
-                  </label>
-                  {companyLogo && (
-                    <button
-                      onClick={() => {
-                        setCompanyLogo(null);
-                        localStorage.removeItem("companyLogo");
-                      }}
-                      className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 rounded-lg px-3 py-2.5 text-sm font-medium"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-                {logoLoading && (
-                  <p className="text-xs text-emerald-600 mt-2">Uploading logo...</p>
-                )}
-              </div>
-
-              {/* Secondary Logo Upload */}
-              <div className="border border-gray-200 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-medium text-gray-700">Secondary Logo (Optional)</h3>
-                  <FaImage className="text-blue-600" />
-                </div>
-                
-                <div className="mb-4">
-                  {secondLogo ? (
-                    <div className="flex flex-col items-center">
-                      <img 
-                        src={secondLogo} 
-                        alt="Secondary Logo Preview" 
-                        className="h-24 w-auto max-w-full object-contain border border-gray-200 rounded-lg mb-3"
-                      />
-                      <p className="text-xs text-gray-500 text-center">
-                        Appears alongside main logo in PDF
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-24 border-2 border-dashed border-gray-300 rounded-lg mb-3">
-                      <FaImage className="text-gray-400 text-3xl mb-2" />
-                      <p className="text-sm text-gray-500">No secondary logo</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="file"
-                    id="second-logo-upload"
-                    accept=".pdf,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.webp"
-                    onChange={(e) => handleLogoUpload(e, true)}
-                    className="hidden"
-                  />
-                  <label
-                    htmlFor="second-logo-upload"
-                    className="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 rounded-lg px-4 py-2.5 text-sm font-medium cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    <FaUpload />
-                    {secondLogo ? "Change Secondary Logo" : "Upload Secondary Logo"}
-                  </label>
-                  {secondLogo && (
-                    <button
-                      onClick={() => {
-                        setSecondLogo(null);
-                        localStorage.removeItem("secondLogo");
-                      }}
-                      className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 rounded-lg px-3 py-2.5 text-sm font-medium"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-                {secondLogoLoading && (
-                  <p className="text-xs text-blue-600 mt-2">Uploading logo...</p>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-6 p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <p className="text-xs text-gray-600">
-                <strong>Note:</strong> Logos are saved in your browser's local storage and will persist between sessions. 
-                Uploaded logos will appear in the "Download ESG Report" PDF but not in the dashboard UI.
-                Supported formats: PNG, JPG, JPEG, GIF, BMP, TIFF, WEBP, and PDF files containing images.
-              </p>
-            </div>
-          </section>
-        </div>
-
         {/* Invoice Data Summary Section */}
         {invoiceData && invoiceData.length > 0 && (
           <section className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
@@ -1465,7 +1321,7 @@ export default function Dashboard() {
                 From EnvironmentalCategory
               </span>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
               <InvoiceDataCard
                 icon={<FaBolt />}
@@ -1496,7 +1352,7 @@ export default function Dashboard() {
                 trend={15.5}
               />
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <InvoiceDataCard
                 icon={<FaWater />}
@@ -1582,8 +1438,7 @@ export default function Dashboard() {
               <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">
                 ESG Performance Overview
               </h2>
-              {/* Company name in overview section - HIDDEN */}
-              <div style={{ display: 'none' }}>
+              <div style={{ display: "none" }}>
                 <div className="text-right">
                   <div className="text-sm font-semibold text-gray-700">
                     Company: {companyName || "Company Name"}
@@ -1595,9 +1450,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Pillar cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 items-stretch">
-              {/* Environmental */}
               <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4 h-full flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -1623,9 +1476,9 @@ export default function Dashboard() {
                       <span className="font-semibold">Renewables</span>{" "}
                       {invoiceMetrics.renewablePercentage > 0
                         ? invoiceMetrics.renewablePercentage.toFixed(1) + "%"
-                        : (envSummaryData.renewableEnergyShare != null
-                          ? envSummaryData.renewableEnergyShare + "%"
-                          : "--")}
+                        : envSummaryData.renewableEnergyShare != null
+                        ? envSummaryData.renewableEnergyShare + "%"
+                        : "--"}
                     </li>
                     <li>
                       <span className="font-semibold">Carbon</span>{" "}
@@ -1635,7 +1488,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Social */}
               <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-4 h-full flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -1675,7 +1527,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Governance */}
               <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-4 h-full flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -1687,7 +1538,9 @@ export default function Dashboard() {
                     </div>
                     <button
                       className="text-[11px] text-amber-700 font-semibold hover:underline"
-                      onClick={() => navigate("/dashboard/governance/corporate")}
+                      onClick={() =>
+                        navigate("/dashboard/governance/corporate")
+                      }
                     >
                       View details
                     </button>
