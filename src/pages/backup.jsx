@@ -1,489 +1,2171 @@
-import React, { useContext, useMemo, useState } from "react";
+import React, { useContext, useMemo, useState, useEffect, useRef } from "react";
 import {
-  FaFilePdf,
-  FaBalanceScale,
-  FaShieldAlt,
-  FaTruck,
-  FaCheckCircle,
-  FaExclamationTriangle,
-} from "react-icons/fa";
-import {
-  FiActivity,
-  FiBookOpen,
-  FiLock,
-  FiTrendingUp,
-  FiTrendingDown,
-  FiTarget,
-  FiDownload,
-  FiUsers,
-  FiUserCheck,
-  FiGlobe,
-  FiAward,
-} from "react-icons/fi";
-import {
+  AreaChart,
+  Area,
+  LineChart,
+  Line,
   BarChart,
   Bar,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
-  Legend,
+  CartesianGrid,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
+  Legend,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
 } from "recharts";
+import {
+  FiActivity,
+  FiZap,
+  FiTrendingDown,
+  FiDroplet,
+  FiTrash2,
+  FiTruck,
+  FiCloud,
+  FiWind,
+  FiSun,
+  FiUpload,
+  FiBarChart2,
+  FiFileText,
+  FiDollarSign,
+  FiCheckCircle,
+  FiAlertCircle,
+  FiRefreshCw,
+  FiEye,
+  FiEyeOff,
+} from "react-icons/fi";
+import {
+  FaFilePdf,
+  FaLeaf,
+  FaRecycle,
+  FaChartPie,
+  FaFileUpload,
+  FaTimes,
+  FaTable,
+} from "react-icons/fa";
+import { GiFactory, GiWaterDrop } from "react-icons/gi";
+import { motion, AnimatePresence } from "framer-motion";
+import { SimulationContext } from "../../context/SimulationContext";
+import { API_BASE_URL } from "../../config/api";
 import { jsPDF } from "jspdf";
-import html2canvas from "html2canvas";
-import { SimulationContext } from "../context/SimulationContext";
+
+// ✅ Update these paths to your actual logo locations
+import greenbdgLogo from "../../assets/AfricaESG.AI.png";
+import clientLogo from "../../assets/ethekwin.png";
 
 const TABS = [
   { id: "overview", label: "Overview", icon: FiActivity },
-  { id: "corporate", label: "Corporate Governance", icon: FaBalanceScale },
-  { id: "ethics", label: "Ethics & Compliance", icon: FaShieldAlt },
-  { id: "privacy", label: "Data Privacy", icon: FiLock },
-  { id: "supply", label: "Supply Chain", icon: FaTruck },
-  { id: "training", label: "Governance Training", icon: FiBookOpen },
+  { id: "energy", label: "Energy", icon: FiZap },
+  { id: "carbon", label: "Carbon", icon: FiCloud },
+  { id: "water", label: "Water", icon: FiDroplet },
+  { id: "waste", label: "Waste", icon: FiTrash2 },
+  { id: "fuel", label: "Fuel", icon: FiTruck },
+  { id: "invoices", label: "Invoices", icon: FaTable },
 ];
 
-// Color palette matching the social screenshots
-const colors = {
-  primary: "#1e40af", // Deep blue from headers
-  secondary: "#3b82f6", // Medium blue
-  accent: "#10b981", // Green for progress
-  positive: "#22c55e", // Success green
-  negative: "#ef4444", // Error red
-  neutral: "#6b7280", // Gray
-  background: "#f8fafc", // Light background
-  card: "#ffffff", // White cards
+const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
+const MONTH_ORDER = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+const chartTheme = {
+  grid: "#e5e7eb",
+  axis: "#9ca3af",
+  tick: "#6b7280",
+  energy: "#10b981",
+  carbon: "#ef4444",
+  water: "#3b82f6",
+  waste: "#06b6d4",
+  fuel: "#f97316",
+  solar: "#f59e0b",
+  wind: "#8b5cf6",
 };
 
-// Progress Bar Component
-const ProgressBar = ({ value = 0, label, showValue = true }) => {
-  const percentage = Math.min(100, Math.max(0, value));
-  
+const EF_ELECTRICITY_T_PER_KWH = 0.99 / 1000;
+
+const tabContentVariants = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -20 },
+};
+
+const cardVariants = {
+  hover: { scale: 1.02, transition: { duration: 0.2 } },
+};
+
+// ---------- Invoice helpers ----------
+const getCompanyNameFromFilename = (filename) => {
+  if (!filename) return "—";
+  let base = filename.replace(/\.[^/.]+$/, "");
+  base = base.replace(/[_-]+/g, " ");
+  base = base.replace(/\b\d{6,}\b/g, "").trim();
+  base = base.replace(/\s+/g, " ").trim();
+  return base || filename;
+};
+
+const getCompanyName = (inv) => {
+  if (inv && typeof inv.company_name === "string" && inv.company_name.trim()) {
+    return inv.company_name.trim();
+  }
+  return getCompanyNameFromFilename(inv?.filename);
+};
+
+const getInvoiceCategoriesText = (inv) => {
+  if (inv && Array.isArray(inv.categories) && inv.categories.length > 0) {
+    return inv.categories.join(", ");
+  }
+  return "—";
+};
+
+const parseInvoiceDate = (value) => {
+  if (!value) return null;
+  const s = value.toString().trim();
+  const parts = s.split(/[\/-]/);
+  if (parts.length === 3) {
+    let [a, b, c] = parts.map((p) => parseInt(p, 10));
+    if (!Number.isNaN(a) && !Number.isNaN(b) && !Number.isNaN(c)) {
+      if (a > 31) return new Date(a, b - 1, c);
+      if (c > 31) return new Date(c, b - 1, a);
+    }
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const getLastSixInvoices = (invoices) => {
+  if (!Array.isArray(invoices) || invoices.length === 0) return [];
+  const withIndex = invoices.map((inv, idx) => ({ inv, idx }));
+  withIndex.sort((a, b) => {
+    const da = parseInvoiceDate(a.inv.invoice_date);
+    const db = parseInvoiceDate(b.inv.invoice_date);
+    const ta = da ? da.getTime() : 0;
+    const tb = db ? db.getTime() : 0;
+    if (tb !== ta) return tb - ta;
+    return b.idx - a.idx;
+  });
+  return withIndex.slice(0, 6).map((x) => x.inv);
+};
+
+const getInvoiceSixMonthEnergy = (inv) => {
+  if (!inv) return null;
+
+  if (inv.sixMonthEnergyKwh != null) return Number(inv.sixMonthEnergyKwh) || 0;
+  if (inv.six_month_energy_kwh != null)
+    return Number(inv.six_month_energy_kwh) || 0;
+  if (inv.previous_6_months_energy_kwh != null)
+    return Number(inv.previous_6_months_energy_kwh) || 0;
+
+  if (Array.isArray(inv.sixMonthHistory)) {
+    return inv.sixMonthHistory.reduce((sum, m) => {
+      const v =
+        m && (m.energyKWh != null || m.energy_kwh != null)
+          ? Number(m.energyKWh ?? m.energy_kwh)
+          : 0;
+      return sum + (Number.isNaN(v) ? 0 : v);
+    }, 0);
+  }
+
+  if (inv.total_energy_kwh != null) return Number(inv.total_energy_kwh) || 0;
+  if (inv.energy_kwh != null) return Number(inv.energy_kwh) || 0;
+
+  return null;
+};
+
+const getTaxInvoiceIdentifier = (inv) => {
+  if (!inv || typeof inv !== "object") return null;
+
+  const blockedLabels = [
+    "tax",
+    "vat",
+    "vat number",
+    "vat number guarantee",
+    "guarantee",
+  ];
+
+  const primaryCandidate =
+    inv.tax_invoice_number ?? inv.tax_invoice_no ?? null;
+
+  if (primaryCandidate) {
+    const s = primaryCandidate.toString().trim();
+    if (s && !blockedLabels.includes(s.toLowerCase())) {
+      return s;
+    }
+  }
+
+  const candidates = [
+    inv.tax_invoice_number,
+    inv.tax_invoice_no,
+    inv.tax_invoice,
+    inv.invoice_number,
+    inv.invoice_no,
+    inv.document_number,
+    inv.invoice_id,
+    inv.account_number,
+  ];
+
+  const numericCandidates = [];
+
+  candidates.forEach((val) => {
+    if (!val) return;
+    const s = val.toString().trim();
+    if (!s) return;
+
+    if (/^\d{6,}$/.test(s)) {
+      numericCandidates.push(s);
+    } else {
+      const matches = s.match(/\d{6,}/g);
+      if (matches) {
+        numericCandidates.push(...matches);
+      }
+    }
+  });
+
+  if (numericCandidates.length > 0) {
+    numericCandidates.sort((a, b) => b.length - a.length);
+    return numericCandidates[0];
+  }
+
+  const textCandidates = candidates
+    .map((v) => (v ? v.toString().trim() : ""))
+    .filter(Boolean);
+
+  const nonLabel = textCandidates.find(
+    (t) => !blockedLabels.includes(t.toLowerCase())
+  );
+
+  return nonLabel || null;
+};
+
+// Tooltip
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload || payload.length === 0) return null;
+
   return (
-    <div className="space-y-1">
-      {label && (
-        <div className="flex justify-between text-sm">
-          <span className="font-medium text-gray-700">{label}</span>
-          {showValue && (
-            <span className="font-bold text-gray-900">{percentage.toFixed(1)}%</span>
+    <div className="backdrop-blur-lg bg-lime-50 border border-gray-200 rounded-2xl p-4 shadow-2xl">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-3 h-3 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500" />
+        <p className="font-bold text-gray-900 text-sm">{label}</p>
+      </div>
+      <div className="space-y-2">
+        {payload.map((entry) => (
+          <div
+            key={entry.dataKey}
+            className="flex items-center justify-between gap-4"
+          >
+            <div className="flex items-center gap-2">
+              <div
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: entry.color }}
+              />
+              <span className="text-xs font-medium text-gray-600">
+                {entry.name}
+              </span>
+            </div>
+            <span className="font-bold text-gray-900 text-sm">
+              {typeof entry.value === "number"
+                ? entry.value.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })
+                : entry.value}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// KPI card
+const KpiCard = ({
+  title,
+  value,
+  unit,
+  icon: Icon,
+  color,
+  trend,
+  trendValue,
+  onClick,
+}) => {
+  const colors = {
+    emerald: "from-emerald-500 to-teal-500",
+    blue: "from-blue-500 to-cyan-500",
+    red: "from-rose-500 to-pink-500",
+    amber: "from-amber-500 to-orange-500",
+    indigo: "from-indigo-500 to-purple-500",
+  };
+
+  const trendColors = {
+    up: "text-emerald-600",
+    down: "text-rose-600",
+    stable: "text-amber-600",
+  };
+
+  return (
+    <motion.div
+      variants={cardVariants}
+      whileHover="hover"
+      onClick={onClick}
+      className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-white to-gray-50 border border-gray-200 shadow-lg ${
+        onClick ? "cursor-pointer hover:border-emerald-300" : ""
+      }`}
+    >
+      <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-white/20 to-transparent rounded-full -translate-y-12 translate-x-12" />
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div
+            className={`p-3 rounded-xl bg-gradient-to-br ${
+              colors[color] || "from-gray-100 to-gray-200"
+            }`}
+          >
+            <Icon className="w-6 h-6 text-white" />
+          </div>
+          {trend && (
+            <div className={`text-xs font-semibold ${trendColors[trend]}`}>
+              {trend === "up" ? "↗" : trend === "down" ? "↘" : "→"}{" "}
+              {trendValue}
+            </div>
           )}
         </div>
-      )}
-      <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
-        <div 
-          className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500"
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-    </div>
-  );
-};
-
-// Metric Card Component (similar to social screenshots)
-const MetricCard = ({ title, value, unit, description, icon: Icon, color = "blue" }) => {
-  const colorClasses = {
-    blue: "bg-blue-50 border-blue-200 text-blue-700",
-    green: "bg-green-50 border-green-200 text-green-700",
-    orange: "bg-orange-50 border-orange-200 text-orange-700",
-    purple: "bg-purple-50 border-purple-200 text-purple-700",
-  };
-
-  return (
-    <div className={`rounded-lg border ${colorClasses[color]} p-4`}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          {Icon && <Icon className="w-4 h-4" />}
-          <span className="text-xs font-semibold uppercase tracking-wide">{title}</span>
+        <div>
+          <p className="text-sm font-medium text-gray-600 mb-1">{title}</p>
+          <p className="text-2xl font-bold text-gray-900">
+            {value}{" "}
+            <span className="text-sm font-normal text-gray-500">{unit}</span>
+          </p>
         </div>
-        {unit && <span className="text-xs text-gray-600">{unit}</span>}
       </div>
-      <div className="text-2xl font-bold text-gray-900 mb-1">{value}</div>
-      {description && (
-        <p className="text-xs text-gray-600">{description}</p>
+    </motion.div>
+  );
+};
+
+// Upload area (for overview invoice section)
+const FileUploadArea = ({ onFileUpload, isLoading }) => {
+  const fileInputRef = useRef(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragleave") {
+      setDragActive(e.type === "dragenter");
+    } else if (e.type === "dragover") {
+      setDragActive(true);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files).filter(
+        (file) =>
+          file.type === "application/pdf" ||
+          file.name.toLowerCase().endsWith(".pdf")
+      );
+      setSelectedFiles(files);
+    }
+  };
+
+  const handleFileSelect = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const files = Array.from(e.target.files).filter(
+        (file) =>
+          file.type === "application/pdf" ||
+          file.name.toLowerCase().endsWith(".pdf")
+      );
+      setSelectedFiles(files);
+    }
+  };
+
+  const handleUpload = () => {
+    if (selectedFiles.length > 0) {
+      onFileUpload(selectedFiles);
+      setSelectedFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const removeFile = (index) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div
+        className={`relative border-2 border-dashed rounded-2xl p-8 transition-all duration-300 ${
+          dragActive
+            ? "border-emerald-500 bg-emerald-50/50"
+            : "border-gray-300 hover:border-emerald-400"
+        }`}
+        onDragEnter={handleDrag}
+        onDragLeave={handleDrag}
+        onDragOver={handleDrag}
+        onDrop={handleDrop}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf"
+          multiple
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+
+        <div className="text-center">
+          <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 flex items-center justify-center mb-4">
+            <FaFileUpload className="w-8 h-8 text-emerald-600" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Upload Invoice PDFs
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Drag & drop your PDF invoices here, or click to browse
+          </p>
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all"
+          >
+            <FiUpload className="w-5 h-5" />
+            Select PDF Files
+          </button>
+
+          <p className="text-xs text-gray-500 mt-3">
+            Supports multiple PDF invoices. Each should contain 6-month energy
+            usage data.
+          </p>
+        </div>
+      </div>
+
+      {selectedFiles.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          className="space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <h4 className="font-medium text-gray-900">
+              Selected Files ({selectedFiles.length})
+            </h4>
+            <button
+              onClick={handleUpload}
+              disabled={isLoading}
+              className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? (
+                <>
+                  <FiRefreshCw className="w-4 h-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <FiUpload className="w-4 h-4" />
+                  Upload Files
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {selectedFiles.map((file, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center justify-between bg-white border border-gray-200 rounded-xl p-3 hover:bg-gray-50"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
+                    <FaFilePdf className="w-5 h-5 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 truncate max-w-xs">
+                      {file.name}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {(file.size / 1024).toFixed(1)} KB
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => removeFile(index)}
+                  className="p-1 hover:bg-gray-100 rounded-lg"
+                >
+                  <FaTimes className="w-4 h-4 text-gray-400 hover:text-red-500" />
+                </button>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
       )}
     </div>
   );
 };
 
-// Governance Status Component
-const GovernanceStatus = ({ status, label, description }) => {
-  const statusColors = {
-    compliant: "bg-green-100 text-green-800 border-green-300",
-    "in-progress": "bg-blue-100 text-blue-800 border-blue-300",
-    "needs-review": "bg-yellow-100 text-yellow-800 border-yellow-300",
-    "non-compliant": "bg-red-100 text-red-800 border-red-300",
-  };
+const InvoiceProcessingStatus = ({ loading, error, successCount }) => {
+  if (loading) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-2xl"
+      >
+        <div className="relative">
+          <div className="w-10 h-10 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin" />
+          <FiRefreshCw className="absolute inset-0 m-auto w-5 h-5 text-blue-600" />
+        </div>
+        <div>
+          <p className="font-medium text-blue-900">Processing Invoices...</p>
+          <p className="text-sm text-blue-700">
+            Extracting energy and cost data from PDFs
+          </p>
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (error) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex items-center gap-3 p-4 bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 rounded-2xl"
+      >
+        <FiAlertCircle className="w-6 h-6 text-red-600" />
+        <div>
+          <p className="font-medium text-red-900">Processing Error</p>
+          <p className="text-sm text-red-700">{error}</p>
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (successCount > 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="flex items-center gap-3 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl"
+      >
+        <FiCheckCircle className="w-6 h-6 text-emerald-600" />
+        <div>
+          <p className="font-medium text-emerald-900">
+            Successfully processed {successCount} invoice
+            {successCount > 1 ? "s" : ""}
+          </p>
+          <p className="text-sm text-emerald-700">
+            Energy and cost data extracted and ready for analysis
+          </p>
+        </div>
+      </motion.div>
+    );
+  }
+
+  return null;
+};
+
+const InvoiceTable = ({ invoices, onViewDetails }) => {
+  const [showDetails, setShowDetails] = useState(false);
+
+  if (!invoices || invoices.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+          <FaFilePdf className="w-8 h-8 text-gray-400" />
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          No Invoices Processed
+        </h3>
+        <p className="text-sm text-gray-600">
+          Upload PDF invoices to see detailed data here
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex items-start justify-between p-3 bg-white rounded-lg border border-gray-200">
-      <div className="flex-1">
-        <h4 className="font-medium text-gray-900 mb-1">{label}</h4>
-        {description && <p className="text-sm text-gray-600">{description}</p>}
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Processed Invoices
+          </h3>
+          <p className="text-sm text-gray-600 mt-1">
+            {invoices.length} invoice{invoices.length > 1 ? "s" : ""} processed
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowDetails(!showDetails)}
+            className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-800"
+          >
+            {showDetails ? (
+              <FiEyeOff className="w-4 h-4" />
+            ) : (
+              <FiEye className="w-4 h-4" />
+            )}
+            {showDetails ? "Hide Details" : "Show Details"}
+          </button>
+        </div>
       </div>
-      <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${statusColors[status] || statusColors['in-progress']}`}>
-        {status === "compliant" && "Compliant"}
-        {status === "in-progress" && "In Progress"}
-        {status === "needs-review" && "Needs Review"}
-        {status === "non-compliant" && "Non-Compliant"}
-      </span>
+
+      <div className="overflow-x-auto rounded-2xl border border-gray-200 shadow-sm">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+            <tr>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                Company
+              </th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                Invoice Date
+              </th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                Tax Invoice #
+              </th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                Categories
+              </th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                6-Month Energy (kWh)
+              </th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                Current Charges (R)
+              </th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                Est. Carbon (tCO₂e)
+              </th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 bg-white">
+            {invoices.map((invoice, index) => {
+              const sixMonthEnergy = getInvoiceSixMonthEnergy(invoice);
+              const taxInvoice = getTaxInvoiceIdentifier(invoice);
+              const estimatedCarbon =
+                sixMonthEnergy * EF_ELECTRICITY_T_PER_KWH;
+
+              return (
+                <motion.tr
+                  key={index}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="hover:bg-gray-50"
+                >
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0 h-10 w-10 rounded-lg bg-gradient-to-br from-emerald-100 to-teal-100 flex items-center justify-center">
+                        <FaFilePdf className="h-5 w-5 text-emerald-600" />
+                      </div>
+                      <div className="ml-4">
+                        <div className="text-sm font-medium text-gray-900">
+                          {getCompanyName(invoice)}
+                        </div>
+                        <div className="text-sm text-gray-500 truncate max-w-xs">
+                          {invoice.filename}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {invoice.invoice_date || "—"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
+                    {taxInvoice || "—"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900 max-w-xs truncate">
+                      {getInvoiceCategoriesText(invoice)}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
+                    {sixMonthEnergy
+                      ? sixMonthEnergy.toLocaleString(undefined, {
+                          maximumFractionDigits: 0,
+                        })
+                      : "—"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
+                    {invoice.total_current_charges
+                      ? `R ${Number(
+                          invoice.total_current_charges
+                        ).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}`
+                      : "—"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
+                    {sixMonthEnergy
+                      ? estimatedCarbon.toLocaleString(undefined, {
+                          minimumFractionDigits: 1,
+                          maximumFractionDigits: 1,
+                        })
+                      : "—"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <button
+                      onClick={() => onViewDetails && onViewDetails(invoice)}
+                      className="text-emerald-700 hover:text-emerald-900 font-medium"
+                    >
+                      View Details
+                    </button>
+                  </td>
+                </motion.tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {showDetails && invoices.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          className="space-y-4"
+        >
+          <h4 className="text-sm font-semibold text-gray-900">
+            Monthly Breakdown
+          </h4>
+          <div className="overflow-x-auto rounded-xl border border-gray-200">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    Company
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    Month
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    Energy (kWh)
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    Charges (R)
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                    Carbon (tCO₂e)
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 bg-white">
+                {invoices.flatMap((invoice, invoiceIndex) => {
+                  const history = Array.isArray(invoice.sixMonthHistory)
+                    ? invoice.sixMonthHistory
+                    : [];
+
+                  return history.map((month, monthIndex) => {
+                    const monthEnergy =
+                      Number(month.energyKWh ?? month.energy_kwh ?? 0) || 0;
+                    const monthCharges =
+                      Number(
+                        month.total_current_charges ??
+                          month.current_charges ??
+                          0
+                      ) || 0;
+                    const monthCarbon =
+                      monthEnergy * EF_ELECTRICITY_T_PER_KWH;
+
+                    return (
+                      <tr
+                        key={`${invoiceIndex}-${monthIndex}`}
+                        className="hover:bg-gray-50"
+                      >
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          {monthIndex === 0 ? getCompanyName(invoice) : ""}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {month.month_label || `Month ${monthIndex + 1}`}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                          {monthEnergy.toLocaleString(undefined, {
+                            maximumFractionDigits: 0,
+                          })}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                          R{" "}
+                          {monthCharges.toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                          {monthCarbon.toFixed(1)}
+                        </td>
+                      </tr>
+                    );
+                  });
+                })}
+              </tbody>
+            </table>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 };
 
-export default function GovernanceCategory() {
+export default function EnvironmentalCategory() {
+  const { environmentalMetrics, environmentalInsights, loading, error } =
+    useContext(SimulationContext);
+
   const [activeTab, setActiveTab] = useState("overview");
+  const [uploadSuccessCount, setUploadSuccessCount] = useState(0);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
 
-  const {
-    governanceMetrics,
-    governanceInsights,
-    governanceSummary,
-    loading,
-    error,
-  } = useContext(SimulationContext);
+  const metrics = environmentalMetrics || {};
 
-  const metrics = governanceMetrics || {};
-  const insights = governanceInsights || [];
-  const summary = governanceSummary || {};
+  const [invoiceSummaries, setInvoiceSummaries] = useState([]);
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [invoiceError, setInvoiceError] = useState(null);
 
-  // Extract values from metrics
-  const getMetric = (key, defaultValue = "N/A") => {
-    return metrics[key] !== undefined ? metrics[key] : defaultValue;
-  };
+  const [invoiceAiMetrics, setInvoiceAiMetrics] = useState(null);
+  const [invoiceAiInsights, setInvoiceAiInsights] = useState([]);
+  const [invoiceAiLoading, setInvoiceAiLoading] = useState(false);
+  const [invoiceAiError, setInvoiceAiError] = useState(null);
 
-  const getSummary = (key, defaultValue = "N/A") => {
-    return summary[key] !== undefined ? summary[key] : defaultValue;
-  };
+  const uploadedRows =
+    metrics.uploadedRows || metrics.rows || metrics.data || [];
 
-  // Calculate derived metrics
-  const governanceScore = useMemo(() => {
-    const baseScore = parseFloat(getMetric("governanceScore", "80"));
-    const findings = parseFloat(getSummary("totalComplianceFindings", "0"));
-    return Math.max(0, Math.min(100, baseScore - findings * 2));
-  }, [metrics, summary]);
+  const monthlySeries = useMemo(() => {
+    if (!Array.isArray(uploadedRows) || uploadedRows.length === 0) return [];
 
-  const supplierCompliance = useMemo(() => {
-    return parseFloat(getMetric("supplierCompliance", "85"));
-  }, [metrics]);
+    const map = new Map();
 
-  const auditCompletion = useMemo(() => {
-    return parseFloat(getMetric("auditCompletion", "92"));
-  }, [metrics]);
+    uploadedRows.forEach((row) => {
+      const label =
+        row.month ||
+        row.Month ||
+        row.period ||
+        row.Period ||
+        row.month_label;
+      if (!label) return;
 
-  const dataPrivacyCompliance = useMemo(() => {
-    return getMetric("dataPrivacyCompliance", "Compliant");
-  }, [metrics]);
+      const key = label.toString().trim();
+      if (!map.has(key)) {
+        map.set(key, {
+          name: key,
+          energy: 0,
+          carbon: 0,
+          waste: 0,
+          fuel: 0,
+          water: 0,
+        });
+      }
 
-  const ethicsCompliance = useMemo(() => {
-    return getMetric("ethicsCompliance", "Compliant");
-  }, [metrics]);
+      const agg = map.get(key);
 
-  // Chart data
-  const complianceTrendData = [
-    { month: "Jan", findings: 12, audits: 85 },
-    { month: "Feb", findings: 8, audits: 88 },
-    { month: "Mar", findings: 15, audits: 82 },
-    { month: "Apr", findings: 6, audits: 90 },
-    { month: "May", findings: 9, audits: 87 },
-    { month: "Jun", findings: 5, audits: 92 },
-  ];
+      const rowEnergy =
+        Number(
+          row.energy_kwh ??
+            row.energyKWh ??
+            row["Energy (kWh)"] ??
+            row["Electricity (kWh)"] ??
+            row.energy
+        ) || 0;
+      agg.energy += rowEnergy;
 
-  const governanceDistributionData = [
-    { name: "Compliant", value: 75, color: colors.positive },
-    { name: "In Progress", value: 15, color: colors.secondary },
-    { name: "Needs Review", value: 8, color: colors.negative },
-    { name: "Not Started", value: 2, color: colors.neutral },
-  ];
+      let rowCarbonRaw =
+        row.co2_tonnes ??
+        row.co2Tonnes ??
+        row.co2 ??
+        row["CO2 (t)"] ??
+        row.carbon ??
+        row.emissions_tonnes ??
+        row.emissions;
+      let rowCarbon = rowCarbonRaw != null ? Number(rowCarbonRaw) : NaN;
+      if (Number.isNaN(rowCarbon)) {
+        rowCarbon = rowEnergy * EF_ELECTRICITY_T_PER_KWH;
+      }
+      agg.carbon += Number.isFinite(rowCarbon) ? rowCarbon : 0;
 
-  // AI Insights processing
-  const aiInsights = insights.length > 0 ? insights : [
-    "Governance performance baseline reflects current corporate structure, compliance status, and oversight mechanisms from your latest ESG upload.",
-    "Comparable African corporates typically target steadily improving board effectiveness, compliance maturity, and stakeholder transparency as part of their broader ESG journey.",
-    "Against this benchmark, your governance indicators show a mix of established frameworks and evolving compliance areas that can be enhanced through focused governance initiatives.",
-    "Strengthen board committee charters with clear ESG oversight responsibilities and regular reporting cadence.",
-    "Implement automated compliance tracking for regulatory changes and policy updates across all jurisdictions.",
-    "Enhance stakeholder communication through regular governance disclosures and transparent reporting channels."
-  ];
+      agg.waste +=
+        Number(row.waste_tonnes ?? row["Waste (t)"] ?? row.waste) || 0;
+      agg.fuel +=
+        Number(row.fuel_litres ?? row.fuel_l ?? row["Fuel (L)"] ?? row.fuel) ||
+        0;
+      agg.water +=
+        Number(row.water_m3 ?? row["Water (m³)"] ?? row.water) || 0;
 
-  // Handle report download
-  const handleDownloadReport = () => {
-    const doc = new jsPDF();
-    
-    // Header
-    doc.setFontSize(24);
-    doc.setTextColor(colors.primary);
-    doc.text("ESG – Governance Performance", 20, 30);
-    
-    doc.setFontSize(12);
-    doc.setTextColor(colors.neutral);
-    doc.text("AfricaESG.AI", 20, 40);
-    
-    // Company Info
-    doc.setFontSize(14);
-    doc.setTextColor(0, 0, 0);
-    doc.text("Governance Performance Summary", 20, 60);
-    
-    doc.setFontSize(11);
-    const metrics = [
-      ["Governance Score", `${governanceScore.toFixed(1)}/100`],
-      ["Supplier Compliance", `${supplierCompliance}%`],
-      ["Audit Completion", `${auditCompletion}%`],
-      ["Data Privacy", dataPrivacyCompliance],
-      ["Ethics Compliance", ethicsCompliance],
-    ];
-    
-    let y = 70;
-    metrics.forEach(([label, value]) => {
-      doc.text(`${label}: ${value}`, 20, y);
-      y += 10;
+      map.set(key, agg);
     });
-    
-    // AI Insights
-    y += 10;
-    doc.setFontSize(14);
-    doc.text("AI Governance Insights", 20, y);
-    y += 10;
-    
-    doc.setFontSize(11);
-    aiInsights.slice(0, 3).forEach((insight, idx) => {
-      const lines = doc.splitTextToSize(`• ${insight}`, 170);
-      lines.forEach(line => {
-        doc.text(line, 25, y);
-        y += 7;
+
+    const arr = Array.from(map.values());
+    arr.sort((a, b) => {
+      const ai = MONTH_ORDER.indexOf(a.name);
+      const bi = MONTH_ORDER.indexOf(b.name);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      return a.name.localeCompare(b.name);
+    });
+
+    return arr.slice(-6);
+  }, [uploadedRows]);
+
+  const energyUsage =
+    (metrics.energyUsage && metrics.energyUsage.length
+      ? metrics.energyUsage
+      : monthlySeries.map((m) => m.energy)) || [];
+
+  const co2Emissions =
+    monthlySeries.length > 0
+      ? monthlySeries.map((m) => m.carbon)
+      : metrics.co2Emissions && metrics.co2Emissions.length
+      ? metrics.co2Emissions
+      : [];
+
+  const waste =
+    (metrics.waste && metrics.waste.length
+      ? metrics.waste
+      : monthlySeries.map((m) => m.waste)) || [];
+
+  const fuelUsage =
+    (metrics.fuelUsage && metrics.fuelUsage.length
+      ? metrics.fuelUsage
+      : monthlySeries.map((m) => m.fuel)) || [];
+
+  const waterUsage =
+    (metrics.waterUsage && metrics.waterUsage.length
+      ? metrics.waterUsage
+      : monthlySeries.map((m) => m.water)) || [];
+
+  const hasAnyData = useMemo(() => {
+    const series = [energyUsage, co2Emissions, waste, fuelUsage, waterUsage];
+    return series.some(
+      (arr) =>
+        Array.isArray(arr) && arr.some((v) => v !== null && v !== undefined)
+    );
+  }, [energyUsage, co2Emissions, waste, fuelUsage, waterUsage]);
+
+  const chartData = useMemo(() => {
+    if (monthlySeries.length > 0) return monthlySeries;
+
+    return months.map((m, idx) => ({
+      name: m,
+      energy: energyUsage[idx] ?? null,
+      carbon: co2Emissions[idx] ?? null,
+      waste: waste[idx] ?? null,
+      fuel: fuelUsage[idx] ?? null,
+      water: waterUsage[idx] ?? null,
+    }));
+  }, [monthlySeries, energyUsage, co2Emissions, waste, fuelUsage, waterUsage]);
+
+  const totalEnergy = energyUsage.reduce((s, v) => s + (v || 0), 0);
+  const totalFuel = fuelUsage.reduce((s, v) => s + (v || 0), 0);
+  const totalWater = waterUsage.reduce((s, v) => s + (v || 0), 0);
+  const avgCarbon =
+    co2Emissions.length > 0
+      ? co2Emissions.reduce((s, v) => s + (v || 0), 0) / co2Emissions.length
+      : 0;
+  const totalWaste = waste.reduce((s, v) => s + (v || 0), 0);
+
+  const persistInvoiceSummaries = (arr) => {
+    try {
+      localStorage.setItem("invoiceSummaries", JSON.stringify(arr));
+    } catch (e) {
+      console.warn("Failed to persist invoiceSummaries", e);
+    }
+  };
+
+  const handleBulkInvoiceUpload = async (fileList) => {
+    if (!fileList || fileList.length === 0) return;
+
+    const files = Array.from(fileList).filter((f) =>
+      f.name.toLowerCase().endsWith(".pdf")
+    );
+
+    if (files.length === 0) {
+      alert("Please select at least one PDF invoice.");
+      return;
+    }
+
+    try {
+      setInvoiceLoading(true);
+      setInvoiceError(null);
+      setUploadSuccessCount(0);
+
+      const formData = new FormData();
+      files.forEach((file) => formData.append("files", file));
+
+      const res = await fetch(`${API_BASE_URL}/api/invoice-bulk-upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`Invoice upload error: ${res.status} ${txt}`);
+      }
+
+      const summaries = await res.json();
+      const processedCount = summaries.length;
+
+      setInvoiceSummaries((prev) => {
+        const updated = [...summaries, ...prev];
+        persistInvoiceSummaries(updated);
+        return updated;
+      });
+
+      setUploadSuccessCount(processedCount);
+      setInvoiceError(null);
+    } catch (err) {
+      console.error("Invoice upload error:", err);
+      setInvoiceError(
+        err.message ||
+          "Failed to process invoice PDF(s). Please confirm the layout is supported."
+      );
+      setUploadSuccessCount(0);
+    } finally {
+      setInvoiceLoading(false);
+    }
+  };
+
+  const handleClearInvoices = () => {
+    if (window.confirm("Are you sure you want to clear all invoice data?")) {
+      setInvoiceSummaries([]);
+      localStorage.removeItem("invoiceSummaries");
+      setInvoiceAiMetrics(null);
+      setInvoiceAiInsights([]);
+      setUploadSuccessCount(0);
+    }
+  };
+
+  const handleViewInvoiceDetails = (invoice) => {
+    setSelectedInvoice(invoice);
+    setShowInvoiceModal(true);
+  };
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("invoiceSummaries");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) setInvoiceSummaries(parsed);
+      }
+    } catch (e) {
+      console.warn("Failed to parse invoiceSummaries from localStorage", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    const loadInvoices = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/invoices`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setInvoiceSummaries(data);
+          persistInvoiceSummaries(data);
+        }
+      } catch (e) {
+        console.warn("Failed to load invoice summaries", e);
+      }
+    };
+    loadInvoices();
+  }, []);
+
+  useEffect(() => {
+    if (!invoiceSummaries || invoiceSummaries.length === 0) return;
+
+    const loadInvoiceAI = async () => {
+      try {
+        setInvoiceAiLoading(true);
+        setInvoiceAiError(null);
+
+        const res = await fetch(
+          `${API_BASE_URL}/api/invoice-environmental-insights?last_n=6`
+        );
+
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(`Invoice AI insights error: ${res.status} ${txt}`);
+        }
+
+        const data = await res.json();
+        setInvoiceAiMetrics(data.metrics || null);
+        setInvoiceAiInsights(
+          Array.isArray(data.insights) ? data.insights : []
+        );
+      } catch (err) {
+        console.error("Invoice AI insights error:", err);
+        setInvoiceAiError(
+          err.message ||
+            "Failed to load AI Environmental insights for invoices."
+        );
+      } finally {
+        setInvoiceAiLoading(false);
+      }
+    };
+
+    loadInvoiceAI();
+  }, [invoiceSummaries.length]);
+
+  const lastSixInvoices = getLastSixInvoices(invoiceSummaries);
+  const lastSixInvoicesChrono = useMemo(() => {
+    const copy = [...lastSixInvoices];
+    copy.sort((a, b) => {
+      const da = parseInvoiceDate(a.invoice_date) || 0;
+      const db = parseInvoiceDate(b.invoice_date) || 0;
+      return da - db;
+    });
+    return copy;
+  }, [lastSixInvoices]);
+
+  const totalInvoices = lastSixInvoicesChrono.length;
+
+  const { totalEnergyKwh, totalCurrentCharges, totalAmountDue } =
+    lastSixInvoicesChrono.reduce(
+      (acc, inv) => {
+        const sixMonthEnergy = getInvoiceSixMonthEnergy(inv);
+        if (sixMonthEnergy != null) {
+          acc.totalEnergyKwh += Number(sixMonthEnergy) || 0;
+        }
+        if (inv.total_current_charges != null) {
+          acc.totalCurrentCharges += Number(inv.total_current_charges) || 0;
+        }
+        if (inv.total_amount_due != null) {
+          acc.totalAmountDue += Number(inv.total_amount_due) || 0;
+        }
+        return acc;
+      },
+      {
+        totalEnergyKwh: 0,
+        totalCurrentCharges: 0,
+        totalAmountDue: 0,
+      }
+    );
+
+  const avgTariff =
+    totalEnergyKwh > 0 ? totalCurrentCharges / totalEnergyKwh : 0;
+
+  const totalInvoiceCo2Tonnes =
+    invoiceAiMetrics && invoiceAiMetrics.estimated_co2_tonnes != null
+      ? invoiceAiMetrics.estimated_co2_tonnes
+      : totalEnergyKwh * EF_ELECTRICITY_T_PER_KWH;
+
+  const monthLevelRows = useMemo(() => {
+    const rows = [];
+
+    lastSixInvoicesChrono.forEach((inv) => {
+      const company = getCompanyName(inv);
+      const history = Array.isArray(inv.sixMonthHistory)
+        ? inv.sixMonthHistory
+        : [];
+
+      const smartTax = getTaxInvoiceIdentifier(inv);
+      const displayTaxInvoice =
+        smartTax ??
+        inv.tax_invoice_number ??
+        inv.tax_invoice_no ??
+        inv.invoice_number ??
+        inv.invoice_no ??
+        inv.account_number ??
+        null;
+
+      history.forEach((m) => {
+        const rawMonthCharges =
+          m.total_current_charges ??
+          m.current_charges ??
+          m.rands ??
+          m.rands_value ??
+          0;
+        const monthCharges = Number(rawMonthCharges) || 0;
+        const monthEnergy = Number(m.energyKWh ?? m.energy_kwh ?? 0) || 0;
+
+        let monthCo2Raw =
+          m.carbonTco2e ??
+          m.carbon_tco2e ??
+          m.co2Tonnes ??
+          m.co2_tonnes ??
+          m.co2 ??
+          m.co2_t ??
+          m.emissions_tonnes ??
+          null;
+        let monthCo2 = monthCo2Raw != null ? Number(monthCo2Raw) : NaN;
+
+        if (Number.isNaN(monthCo2)) {
+          monthCo2 = monthEnergy * EF_ELECTRICITY_T_PER_KWH;
+        }
+
+        monthCo2 = Number.isFinite(monthCo2) ? monthCo2 : 0;
+
+        rows.push({
+          company,
+          categories: getInvoiceCategoriesText(inv),
+          tax_invoice_number: displayTaxInvoice,
+          invoice_date: inv.invoice_date,
+          month_label: m.month_label,
+          energyKWh: monthEnergy,
+          total_current_charges: monthCharges,
+          total_amount_due: null,
+          co2Tonnes: monthCo2,
+        });
       });
     });
-    
-    // Footer
-    doc.setFontSize(10);
-    doc.setTextColor(colors.neutral);
-    doc.text("Powered by AfricaESG.AI", 20, doc.internal.pageSize.height - 20);
-    doc.text(new Date().toLocaleDateString(), doc.internal.pageSize.width - 40, doc.internal.pageSize.height - 20);
-    
-    doc.save("ESG_Governance_Report.pdf");
+
+    rows.sort((a, b) => {
+      if (!a.month_label || !b.month_label) return 0;
+      return a.month_label > b.month_label ? 1 : -1;
+    });
+
+    return rows;
+  }, [lastSixInvoicesChrono]);
+
+  const groupedMonthRows = useMemo(() => {
+    const groups = [];
+    const map = new Map();
+
+    monthLevelRows.forEach((row) => {
+      const key = `${row.company}||${row.categories}||${row.tax_invoice_number}`;
+
+      if (!map.has(key)) {
+        map.set(key, { ...row, months: [] });
+        groups.push(map.get(key));
+      }
+
+      map.get(key).months.push({
+        month_label: row.month_label,
+        total_current_charges: row.total_current_charges,
+        total_amount_due: row.total_amount_due,
+        energyKWh: row.energyKWh,
+        co2Tonnes: row.co2Tonnes,
+      });
+    });
+
+    return groups;
+  }, [monthLevelRows]);
+
+  const groupedInvoices = useMemo(() => {
+    const map = new Map();
+
+    lastSixInvoicesChrono.forEach((inv) => {
+      const company = getCompanyName(inv);
+      const taxInvoice = getTaxInvoiceIdentifier(inv);
+      const key = `${company}||${taxInvoice || ""}`;
+
+      if (!map.has(key)) {
+        map.set(key, {
+          company,
+          rows: [],
+        });
+      }
+
+      map.get(key).rows.push({
+        ...inv,
+        tax_invoice_number: taxInvoice,
+      });
+    });
+
+    return Array.from(map.values());
+  }, [lastSixInvoicesChrono]);
+
+  const invoiceChartData = useMemo(() => {
+    if (monthLevelRows.length === 0) return [];
+
+    const map = new Map();
+
+    monthLevelRows.forEach((row) => {
+      const key = row.month_label || "Unknown";
+      if (!map.has(key)) {
+        map.set(key, {
+          name: key,
+          energy: 0,
+          charges: 0,
+          carbon: 0,
+        });
+      }
+      const agg = map.get(key);
+      agg.energy += row.energyKWh || 0;
+      agg.charges += row.total_current_charges || 0;
+      agg.carbon += row.co2Tonnes || 0;
+      map.set(key, agg);
+    });
+
+    const arr = Array.from(map.values());
+    arr.sort((a, b) => a.name.localeCompare(b.name));
+    return arr;
+  }, [monthLevelRows]);
+
+  const energyChartData =
+    invoiceChartData.length > 0 ? invoiceChartData : chartData;
+
+  const renderNoData = (title) => (
+    <div className="flex h-72 items-center justify-center rounded-2xl border-2 border-dashed border-gray-300 bg-gradient-to-br from-gray-50 to-white">
+      <div className="text-center px-6">
+        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+          <FiBarChart2 className="w-8 h-8 text-gray-400" />
+        </div>
+        <p className="text-sm font-semibold text-gray-600 mb-1">
+          No {title} data available
+        </p>
+        <p className="text-xs text-gray-500">
+          Upload environmental data to visualize insights
+        </p>
+      </div>
+    </div>
+  );
+
+  const hasInvoiceInsights =
+    invoiceAiMetrics &&
+    Array.isArray(invoiceAiInsights) &&
+    invoiceAiInsights.length > 0;
+
+  // ✅ Updated: generate PDF with logos from imported asset paths
+  const handleDownloadEnvReport = () => {
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+    });
+
+    const greenbdgImg = new Image();
+    const clientImg = new Image();
+    greenbdgImg.src = greenbdgLogo; // from src/assets/greenbdg-logo.png
+    clientImg.src = clientLogo; // from src/assets/client-logo.png
+
+    let loaded = 0;
+
+    const renderAndSave = () => {
+      // Header background
+      doc.setFillColor(242, 247, 255);
+      doc.rect(0, 0, 210, 30, "F");
+
+      // Left logo (GreenBDG / AfricaESG)
+      try {
+        doc.addImage(greenbdgImg, "PNG", 15, 6, 35, 15);
+      } catch (e) {
+        console.warn("Failed to add greenbdg logo:", e);
+      }
+
+      // Right logo (Client)
+      try {
+        doc.addImage(clientImg, "PNG", 160, 6, 35, 15);
+      } catch (e) {
+        console.warn("Failed to add client logo:", e);
+      }
+
+      // Title & subtitle
+      doc.setFontSize(16);
+      doc.setTextColor(20, 20, 20);
+      doc.text("Environmental Performance Report", 20, 40);
+
+      doc.setFontSize(11);
+      doc.setTextColor(90, 90, 90);
+      doc.text("AfricaESG.AI – ESG Environmental Dashboard Summary", 20, 48);
+
+      // (You can add KPIs and more data here later if you want)
+
+      doc.save("AfricaESG_Environmental_Report.pdf");
+    };
+
+    const handleLoad = () => {
+      loaded += 1;
+      if (loaded === 2) {
+        renderAndSave();
+      }
+    };
+
+    const handleError = (err) => {
+      console.warn("Logo failed to load, generating text-only PDF", err);
+      doc.setFontSize(16);
+      doc.text("Environmental Performance Report", 20, 20);
+      doc.save("AfricaESG_Environmental_Report.pdf");
+    };
+
+    greenbdgImg.onload = handleLoad;
+    clientImg.onload = handleLoad;
+    greenbdgImg.onerror = handleError;
+    clientImg.onerror = handleError;
   };
 
-  // Render content based on active tab
+  const radarData = [
+    { subject: "Energy", A: totalEnergy / 10000, fullMark: 1 },
+    { subject: "Carbon", A: avgCarbon / 10, fullMark: 1 },
+    { subject: "Waste", A: totalWaste / 100, fullMark: 1 },
+    { subject: "Fuel", A: totalFuel / 5000, fullMark: 1 },
+    { subject: "Water", A: totalWater / 500, fullMark: 1 },
+    { subject: "Efficiency", A: 0.7, fullMark: 1 },
+  ];
+
+  const handleInvoiceKpiClick = () => {
+    setActiveTab("invoices");
+  };
+
+  // ---------- ENERGY TAB DATA (two charts) ----------
+  const energyTabData = useMemo(() => {
+    return chartData.map((row) => {
+      const energyVal = row.energy || 0;
+      const carbonVal =
+        row.carbon != null
+          ? row.carbon
+          : energyVal * EF_ELECTRICITY_T_PER_KWH;
+
+      const energyIntensity = energyVal / 1000;
+      const carbonIntensity =
+        energyVal > 0 ? carbonVal / energyVal : 0;
+
+      return {
+        name: row.name,
+        energy: energyVal,
+        energyIntensity,
+        carbonIntensity,
+      };
+    });
+  }, [chartData]);
+
+  // ---------- PER-RESOURCE CHART DATA FOR OTHER TABS ----------
+  const carbonChartData = useMemo(
+    () =>
+      chartData.map((row) => ({
+        name: row.name,
+        carbon: row.carbon || 0,
+      })),
+    [chartData]
+  );
+
+  const waterChartData = useMemo(
+    () =>
+      chartData.map((row) => ({
+        name: row.name,
+        water: row.water || 0,
+      })),
+    [chartData]
+  );
+
+  const wasteChartData = useMemo(
+    () =>
+      chartData.map((row) => ({
+        name: row.name,
+        waste: row.waste || 0,
+      })),
+    [chartData]
+  );
+
+  const fuelChartData = useMemo(
+    () =>
+      chartData.map((row) => ({
+        name: row.name,
+        fuel: row.fuel || 0,
+      })),
+    [chartData]
+  );
+
   const renderTabContent = () => {
     switch (activeTab) {
-      case "corporate":
+      case "invoices":
         return (
           <div className="space-y-6">
-            <div className="bg-white rounded-lg border border-gray-300 p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Corporate Governance Framework</h3>
-              
-              <div className="space-y-4">
-                <GovernanceStatus
-                  status="compliant"
-                  label="Board Structure & Independence"
-                  description="Board composition, independent directors, and committee structure"
-                />
-                
-                <GovernanceStatus
-                  status="compliant"
-                  label="Reporting Standards"
-                  description={`${getMetric("reportingStandards", "IFRS, GRI Standards, King IV")}`}
-                />
-                
-                <GovernanceStatus
-                  status="compliant"
-                  label="ISO Certification"
-                  description={`${getMetric("isoCertification", "ISO 9001:2015 Certified")}`}
-                />
-                
-                <div className="pt-4 border-t border-gray-200">
-                  <h4 className="font-semibold text-gray-900 mb-3">Performance Metrics</h4>
-                  <div className="space-y-3">
-                    <ProgressBar value={98} label="Board Meeting Attendance" />
-                    <ProgressBar value={92} label="Committee Effectiveness" />
-                    <ProgressBar value={85} label="Stakeholder Engagement" />
+            <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    Invoice Records
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    View processed invoice data with energy and cost metrics
+                  </p>
+                </div>
+                {invoiceSummaries.length > 0 && (
+                  <button
+                    onClick={handleClearInvoices}
+                    className="inline-flex items-center gap-2 text-sm text-rose-600 hover:text-rose-700 font-medium"
+                  >
+                    <FiTrash2 className="w-4 h-4" />
+                    Clear All Invoices
+                  </button>
+                )}
+              </div>
+              <InvoiceTable
+                invoices={invoiceSummaries}
+                onViewDetails={handleViewInvoiceDetails}
+              />
+            </div>
+
+            {invoiceSummaries.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
+                      <FiZap className="w-6 h-6 text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-emerald-900">
+                        Total Energy
+                      </p>
+                      <p className="text-2xl font-bold text-emerald-700">
+                        {totalEnergyKwh.toLocaleString()} kWh
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-2xl p-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                      <FiDollarSign className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-blue-900">
+                        Total Charges
+                      </p>
+                      <p className="text-2xl font-bold text-blue-700">
+                        R{" "}
+                        {totalCurrentCharges.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-200 rounded-2xl p-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-rose-100 flex items-center justify-center">
+                      <FiCloud className="w-6 h-6 text-rose-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-rose-900">
+                        Estimated Carbon
+                      </p>
+                      <p className="text-2xl font-bold text-rose-700">
+                        {totalInvoiceCo2Tonnes.toLocaleString(undefined, {
+                          maximumFractionDigits: 0,
+                        })}{" "}
+                        tCO₂e
+                      </p>
+                      <p className="text-xs text-rose-600 mt-1">
+                        Calculated as: Energy (kWh) × 0.99 / 1000
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         );
 
-      case "ethics":
+      case "energy":
         return (
           <div className="space-y-6">
-            <div className="bg-white rounded-lg border border-gray-300 p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Ethics & Compliance Program</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <MetricCard
-                  title="Code of Conduct"
-                  value="100%"
-                  unit="adoption"
-                  description="Annual certification completed"
-                  icon={FaCheckCircle}
-                  color="green"
-                />
-                
-                <MetricCard
-                  title="Whistleblower Reports"
-                  value={getSummary("complianceFindings", "3")}
-                  unit="cases"
-                  description="Active investigations"
-                  icon={FaExclamationTriangle}
-                  color="orange"
-                />
-              </div>
-              
-              <div className="space-y-4">
-                <GovernanceStatus
-                  status="compliant"
-                  label="Anti-Bribery Policy"
-                  description="Comprehensive policy implemented and communicated"
-                />
-                
-                <GovernanceStatus
-                  status="in-progress"
-                  label="Compliance Training"
-                  description="Annual training program underway"
-                />
-                
-                <GovernanceStatus
-                  status="compliant"
-                  label="Ethics Hotline"
-                  description="24/7 confidential reporting available"
-                />
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <KpiCard
+                title="Total Energy"
+                value={(totalEnergyKwh || totalEnergy).toLocaleString()}
+                unit="kWh"
+                icon={FiZap}
+                color="emerald"
+              />
+              <KpiCard
+                title="Carbon Emissions"
+                value={totalInvoiceCo2Tonnes.toLocaleString(undefined, {
+                  maximumFractionDigits: 0,
+                })}
+                unit="tCO₂e"
+                icon={FiCloud}
+                color="red"
+              />
+              <KpiCard
+                title="Water Usage"
+                value={totalWater.toLocaleString()}
+                unit="m³"
+                icon={FiDroplet}
+                color="blue"
+              />
+              <KpiCard
+                title="Waste Generated"
+                value={totalWaste.toFixed(1)}
+                unit="tonnes"
+                icon={FiTrash2}
+                color="blue"
+              />
+              <KpiCard
+                title="Fuel Consumption"
+                value={totalFuel.toLocaleString()}
+                unit="liters"
+                icon={FiTruck}
+                color="amber"
+              />
             </div>
-          </div>
-        );
 
-      case "privacy":
-        return (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg border border-gray-300 p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Data Privacy & Security</h3>
-              
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium text-gray-700">Privacy Compliance Status</span>
-                  <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">
-                    {dataPrivacyCompliance}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-600">
-                  {getMetric("privacyDescription", "GDPR, POPIA, and local data protection regulations compliance")}
-                </p>
-              </div>
-              
-              <div className="space-y-4">
-                <GovernanceStatus
-                  status="compliant"
-                  label="Data Encryption"
-                  description="End-to-end encryption for all sensitive data"
-                />
-                
-                <GovernanceStatus
-                  status="compliant"
-                  label="Access Controls"
-                  description="Role-based access control implemented"
-                />
-                
-                <GovernanceStatus
-                  status="in-progress"
-                  label="Third-party Security"
-                  description="Vendor security assessments ongoing"
-                />
-              </div>
-            </div>
-          </div>
-        );
-
-      case "supply":
-        return (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg border border-gray-300 p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Supply Chain Governance</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium text-gray-700">Supplier Compliance</span>
-                    <span className="text-xl font-bold text-gray-900">{supplierCompliance}%</span>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">
+                      Energy vs Energy Intensity
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Energy consumption alongside derived energy intensity
+                    </p>
                   </div>
-                  <ProgressBar value={supplierCompliance} />
                 </div>
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium text-gray-700">Audit Completion</span>
-                    <span className="text-xl font-bold text-gray-900">{auditCompletion}%</span>
+
+                {energyTabData.length ? (
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={energyTabData}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke={chartTheme.grid}
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="name"
+                          tickLine={false}
+                          axisLine={{
+                            stroke: chartTheme.axis,
+                            strokeWidth: 1,
+                          }}
+                          tick={{ fontSize: 12, fill: chartTheme.tick }}
+                        />
+                        <YAxis
+                          yAxisId="left"
+                          tickLine={false}
+                          axisLine={{
+                            stroke: chartTheme.axis,
+                            strokeWidth: 1,
+                          }}
+                          tick={{ fontSize: 12, fill: chartTheme.tick }}
+                        />
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fontSize: 12, fill: chartTheme.tick }}
+                        />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend />
+                        <Line
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey="energy"
+                          name="Energy (kWh)"
+                          stroke={chartTheme.energy}
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                        <Line
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey="energyIntensity"
+                          name="Energy Intensity (scaled)"
+                          stroke={chartTheme.water}
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                          strokeDasharray="5 3"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
                   </div>
-                  <ProgressBar value={auditCompletion} />
-                </div>
+                ) : (
+                  renderNoData("energy")
+                )}
               </div>
-              
-              <div className="space-y-4">
-                <GovernanceStatus
-                  status="in-progress"
-                  label="Supplier ESG Screening"
-                  description="ESG criteria integrated into vendor selection"
-                />
-                
-                <GovernanceStatus
-                  status="compliant"
-                  label="Contract Compliance"
-                  description="ESG clauses in all major contracts"
-                />
-                
-                <GovernanceStatus
-                  status="needs-review"
-                  label="Supply Chain Transparency"
-                  description="Tier 2+ supplier visibility needs improvement"
-                />
+
+              <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">
+                      Energy vs Carbon Intensity
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Energy consumption vs carbon intensity (tCO₂e/kWh)
+                    </p>
+                  </div>
+                </div>
+
+                {energyTabData.length ? (
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={energyTabData}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke={chartTheme.grid}
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="name"
+                          tickLine={false}
+                          axisLine={{
+                            stroke: chartTheme.axis,
+                            strokeWidth: 1,
+                          }}
+                          tick={{ fontSize: 12, fill: chartTheme.tick }}
+                        />
+                        <YAxis
+                          yAxisId="left"
+                          tickLine={false}
+                          axisLine={{
+                            stroke: chartTheme.axis,
+                            strokeWidth: 1,
+                          }}
+                          tick={{ fontSize: 12, fill: chartTheme.tick }}
+                        />
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fontSize: 12, fill: chartTheme.tick }}
+                        />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend />
+                        <Line
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey="energy"
+                          name="Energy (kWh)"
+                          stroke={chartTheme.energy}
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                        <Line
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey="carbonIntensity"
+                          name="Carbon Intensity (tCO₂e/kWh)"
+                          stroke={chartTheme.carbon}
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                          strokeDasharray="4 2"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  renderNoData("carbon intensity")
+                )}
               </div>
             </div>
           </div>
         );
 
-      case "training":
+      case "carbon":
         return (
           <div className="space-y-6">
-            <div className="bg-white rounded-lg border border-gray-300 p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Governance Training</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <MetricCard
-                  title="Total Trainings"
-                  value={getSummary("totalTrainings", "24")}
-                  unit="sessions"
-                  description="Annual program"
-                  icon={FiBookOpen}
-                  color="blue"
-                />
-                
-                <MetricCard
-                  title="Completion Rate"
-                  value="98%"
-                  unit="participation"
-                  description="Mandatory courses"
-                  icon={FiUsers}
-                  color="green"
-                />
-                
-                <MetricCard
-                  title="Satisfaction"
-                  value="4.7"
-                  unit="/5 rating"
-                  description="Participant feedback"
-                  icon={FiAward}
-                  color="purple"
-                />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <KpiCard
+                title="Carbon Emissions"
+                value={totalInvoiceCo2Tonnes.toLocaleString(undefined, {
+                  maximumFractionDigits: 0,
+                })}
+                unit="tCO₂e"
+                icon={FiCloud}
+                color="red"
+              />
+              <KpiCard
+                title="Total Energy"
+                value={(totalEnergyKwh || totalEnergy).toLocaleString()}
+                unit="kWh"
+                icon={FiZap}
+                color="emerald"
+              />
+              <KpiCard
+                title="Waste Generated"
+                value={totalWaste.toFixed(1)}
+                unit="tonnes"
+                icon={FiTrash2}
+                color="blue"
+              />
+              <KpiCard
+                title="Fuel Consumption"
+                value={totalFuel.toLocaleString()}
+                unit="liters"
+                icon={FiTruck}
+                color="amber"
+              />
+              <KpiCard
+                title="Water Usage"
+                value={totalWater.toLocaleString()}
+                unit="m³"
+                icon={FiDroplet}
+                color="blue"
+              />
+            </div>
+
+            <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    Carbon Emissions Trend
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Carbon emissions over time based on uploaded data
+                  </p>
+                </div>
               </div>
-              
-              <div className="space-y-3">
-                <ProgressBar value={95} label="Governance Training Completion" />
-                <ProgressBar value={92} label="Compliance Training Completion" />
-                <ProgressBar value={88} label="Leadership Training Completion" />
+
+              {carbonChartData.length ? (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={carbonChartData}>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={chartTheme.grid}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="carbon"
+                        name="Carbon (tCO₂e)"
+                        stroke={chartTheme.carbon}
+                        strokeWidth={3}
+                        dot={{ r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                renderNoData("carbon")
+              )}
+            </div>
+          </div>
+        );
+
+      case "water":
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <KpiCard
+                title="Water Usage"
+                value={totalWater.toLocaleString()}
+                unit="m³"
+                icon={FiDroplet}
+                color="blue"
+              />
+              <KpiCard
+                title="Total Energy"
+                value={(totalEnergyKwh || totalEnergy).toLocaleString()}
+                unit="kWh"
+                icon={FiZap}
+                color="emerald"
+              />
+              <KpiCard
+                title="Carbon Emissions"
+                value={totalInvoiceCo2Tonnes.toLocaleString(undefined, {
+                  maximumFractionDigits: 0,
+                })}
+                unit="tCO₂e"
+                icon={FiCloud}
+                color="red"
+              />
+              <KpiCard
+                title="Waste Generated"
+                value={totalWaste.toFixed(1)}
+                unit="tonnes"
+                icon={FiTrash2}
+                color="blue"
+              />
+              <KpiCard
+                title="Fuel Consumption"
+                value={totalFuel.toLocaleString()}
+                unit="liters"
+                icon={FiTruck}
+                color="amber"
+              />
+            </div>
+
+            <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    Water Usage Trend
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Water consumption over time based on uploaded data
+                  </p>
+                </div>
               </div>
+
+              {waterChartData.length ? (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={waterChartData}>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={chartTheme.grid}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend />
+                      <Area
+                        type="monotone"
+                        dataKey="water"
+                        name="Water (m³)"
+                        stroke={chartTheme.water}
+                        fill={chartTheme.water}
+                        fillOpacity={0.2}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                renderNoData("water")
+              )}
+            </div>
+          </div>
+        );
+
+      case "waste":
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <KpiCard
+                title="Waste Generated"
+                value={totalWaste.toFixed(1)}
+                unit="tonnes"
+                icon={FiTrash2}
+                color="blue"
+              />
+              <KpiCard
+                title="Total Energy"
+                value={(totalEnergyKwh || totalEnergy).toLocaleString()}
+                unit="kWh"
+                icon={FiZap}
+                color="emerald"
+              />
+              <KpiCard
+                title="Carbon Emissions"
+                value={totalInvoiceCo2Tonnes.toLocaleString(undefined, {
+                  maximumFractionDigits: 0,
+                })}
+                unit="tCO₂e"
+                icon={FiCloud}
+                color="red"
+              />
+              <KpiCard
+                title="Water Usage"
+                value={totalWater.toLocaleString()}
+                unit="m³"
+                icon={FiDroplet}
+                color="blue"
+              />
+              <KpiCard
+                title="Fuel Consumption"
+                value={totalFuel.toLocaleString()}
+                unit="liters"
+                icon={FiTruck}
+                color="amber"
+              />
+            </div>
+
+            <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    Waste Generation Trend
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Waste generated over time based on uploaded data
+                  </p>
+                </div>
+              </div>
+
+              {wasteChartData.length ? (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={wasteChartData}>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={chartTheme.grid}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend />
+                      <Bar
+                        dataKey="waste"
+                        name="Waste (t)"
+                        stroke={chartTheme.waste}
+                        fill={chartTheme.waste}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                renderNoData("waste")
+              )}
+            </div>
+          </div>
+        );
+
+      case "fuel":
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <KpiCard
+                title="Fuel Consumption"
+                value={totalFuel.toLocaleString()}
+                unit="liters"
+                icon={FiTruck}
+                color="amber"
+              />
+              <KpiCard
+                title="Total Energy"
+                value={(totalEnergyKwh || totalEnergy).toLocaleString()}
+                unit="kWh"
+                icon={FiZap}
+                color="emerald"
+              />
+              <KpiCard
+                title="Carbon Emissions"
+                value={totalInvoiceCo2Tonnes.toLocaleString(undefined, {
+                  maximumFractionDigits: 0,
+                })}
+                unit="tCO₂e"
+                icon={FiCloud}
+                color="red"
+              />
+              <KpiCard
+                title="Water Usage"
+                value={totalWater.toLocaleString()}
+                unit="m³"
+                icon={FiDroplet}
+                color="blue"
+              />
+              <KpiCard
+                title="Waste Generated"
+                value={totalWaste.toFixed(1)}
+                unit="tonnes"
+                icon={FiTrash2}
+                color="blue"
+              />
+            </div>
+
+            <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">
+                    Fuel Usage Trend
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Fuel consumption over time based on uploaded data
+                  </p>
+                </div>
+              </div>
+
+              {fuelChartData.length ? (
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={fuelChartData}>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={chartTheme.grid}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={{
+                          stroke: chartTheme.axis,
+                          strokeWidth: 1,
+                        }}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="fuel"
+                        name="Fuel (L)"
+                        stroke={chartTheme.fuel}
+                        strokeWidth={3}
+                        dot={{ r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                renderNoData("fuel")
+              )}
             </div>
           </div>
         );
@@ -492,331 +2174,735 @@ export default function GovernanceCategory() {
       default:
         return (
           <div className="space-y-6">
-            {/* Key Metrics */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <MetricCard
-                title="Governance Score"
-                value={governanceScore.toFixed(1)}
-                unit="/100"
-                description="Overall effectiveness"
-                icon={FaBalanceScale}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <KpiCard
+                title="Total Energy"
+                value={(totalEnergyKwh || totalEnergy).toLocaleString()}
+                unit="kWh"
+                icon={FiZap}
+                color="emerald"
+                onClick={handleInvoiceKpiClick}
+              />
+              <KpiCard
+                title="Carbon Emissions"
+                value={totalInvoiceCo2Tonnes.toLocaleString(undefined, {
+                  maximumFractionDigits: 0,
+                })}
+                unit="tCO₂e"
+                icon={FiCloud}
+                color="red"
+                onClick={handleInvoiceKpiClick}
+              />
+              <KpiCard
+                title="Water Usage"
+                value={totalWater.toLocaleString()}
+                unit="m³"
+                icon={FiDroplet}
                 color="blue"
               />
-              
-              <MetricCard
-                title="Supplier Compliance"
-                value={supplierCompliance}
-                unit="%"
-                description="ESG-compliant suppliers"
-                icon={FaTruck}
-                color="green"
+              <KpiCard
+                title="Waste Generated"
+                value={totalWaste.toFixed(1)}
+                unit="tonnes"
+                icon={FiTrash2}
+                color="blue"
               />
-              
-              <MetricCard
-                title="Data Privacy"
-                value={dataPrivacyCompliance}
-                unit="status"
-                description="Regulatory compliance"
-                icon={FiLock}
-                color="purple"
-              />
-              
-              <MetricCard
-                title="Ethics Compliance"
-                value={ethicsCompliance}
-                unit="status"
-                description="Policy adherence"
-                icon={FaShieldAlt}
-                color="orange"
+              <KpiCard
+                title="Fuel Consumption"
+                value={totalFuel.toLocaleString()}
+                unit="liters"
+                icon={FiTruck}
+                color="amber"
               />
             </div>
 
-            {/* Charts Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Compliance Trends */}
-              <div className="bg-white rounded-lg border border-gray-300 p-4">
-                <h4 className="font-semibold text-gray-900 mb-4">Compliance Trends</h4>
-                <div className="h-64">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">
+                      Environmental Performance
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Combined view of energy consumption and carbon emissions
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                      <span className="text-xs font-medium text-gray-600">
+                        Energy
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-rose-500" />
+                      <span className="text-xs font-medium text-gray-600">
+                        Carbon
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {hasAnyData ? (
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={energyChartData}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke={chartTheme.grid}
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="name"
+                          tickLine={false}
+                          axisLine={{
+                            stroke: chartTheme.axis,
+                            strokeWidth: 1,
+                          }}
+                          tick={{ fontSize: 12, fill: chartTheme.tick }}
+                        />
+                        <YAxis
+                          yAxisId="left"
+                          tickLine={false}
+                          axisLine={{
+                            stroke: chartTheme.axis,
+                            strokeWidth: 1,
+                          }}
+                          tick={{ fontSize: 12, fill: chartTheme.tick }}
+                        />
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fontSize: 12, fill: chartTheme.tick }}
+                        />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend />
+                        <Line
+                          yAxisId="left"
+                          type="monotone"
+                          dataKey="energy"
+                          name="Energy (kWh)"
+                          stroke={chartTheme.energy}
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                        <Line
+                          yAxisId="right"
+                          type="monotone"
+                          dataKey="carbon"
+                          name="Carbon (tCO₂e)"
+                          stroke={chartTheme.carbon}
+                          strokeWidth={3}
+                          dot={{ r: 4 }}
+                          activeDot={{ r: 6 }}
+                          strokeDasharray="4 2"
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  renderNoData("environmental")
+                )}
+              </div>
+
+              <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl border border-gray-200 shadow-xl p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">
+                      Performance Overview
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Environmental performance across key metrics
+                    </p>
+                  </div>
+                  <FaChartPie className="w-6 h-6 text-gray-400" />
+                </div>
+
+                <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={complianceTrendData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="month" stroke="#6b7280" fontSize={12} />
-                      <YAxis stroke="#6b7280" fontSize={12} />
-                      <Tooltip />
-                      <Legend />
-                      <Line 
-                        type="monotone" 
-                        dataKey="findings" 
-                        name="Compliance Findings" 
-                        stroke={colors.negative}
-                        strokeWidth={2}
+                    <RadarChart outerRadius={90} data={radarData}>
+                      <PolarGrid stroke={chartTheme.grid} />
+                      <PolarAngleAxis
+                        dataKey="subject"
+                        tick={{ fill: chartTheme.tick, fontSize: 12 }}
                       />
-                      <Line 
-                        type="monotone" 
-                        dataKey="audits" 
-                        name="Audit Completion %" 
-                        stroke={colors.positive}
-                        strokeWidth={2}
+                      <PolarRadiusAxis
+                        angle={30}
+                        domain={[0, 1]}
+                        tick={{ fill: chartTheme.tick, fontSize: 10 }}
                       />
-                    </LineChart>
+                      <Radar
+                        name="Performance"
+                        dataKey="A"
+                        stroke="#10b981"
+                        fill="#10b981"
+                        fillOpacity={0.3}
+                      />
+                    </RadarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
+            </div>
 
-              {/* Governance Status Distribution */}
-              <div className="bg-white rounded-lg border border-gray-300 p-4">
-                <h4 className="font-semibold text-gray-900 mb-4">Governance Status Distribution</h4>
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={governanceDistributionData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={(entry) => `${entry.name}: ${entry.value}%`}
-                        outerRadius={80}
-                        dataKey="value"
-                      >
-                        {governanceDistributionData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
+            <section className="bg-white/90 backdrop-blur rounded-2xl shadow-lg border border-gray-200 p-6 space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div>
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-800">
+                    Invoice PDF Processing
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-1 max-w-xl">
+                    Upload bulk PDF invoices and view cost &amp; usage data per
+                    invoice. Energy reflects the last 6 months on each invoice.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <label className="inline-flex items-center gap-2 bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-full text-xs sm:text-sm font-medium shadow-md hover:shadow-lg cursor-pointer transition-all">
+                    <FaFilePdf />
+                    Bulk Invoices (PDF)
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      multiple
+                      className="hidden"
+                      onChange={(e) =>
+                        handleBulkInvoiceUpload(e.target.files)
+                      }
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <InvoiceProcessingStatus
+                loading={invoiceLoading}
+                error={invoiceError}
+                successCount={uploadSuccessCount}
+              />
+
+              {totalInvoices > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-2">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                      Invoice PDFs
+                    </div>
+                    <div className="text-xl font-bold text-slate-900 mt-1">
+                      {invoiceSummaries.length}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      Total processed invoice PDFs
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                      Invoices (last 6 by date)
+                    </div>
+                    <div className="text-xl font-bold text-slate-900 mt-1">
+                      {totalInvoices}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      Most recent 6 invoice records
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">
+                      Total energy (kWh)
+                    </div>
+                    <div className="text-xl font-bold text-emerald-900 mt-1 tabular-nums">
+                      {totalEnergyKwh.toLocaleString(undefined, {
+                        maximumFractionDigits: 0,
+                      })}
+                    </div>
+                    <div className="text-[11px] text-emerald-700/80 mt-0.5">
+                      Aggregated for last 6 invoices
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+                    <div className="text-[11px] font-semibold text-amber-700 uppercase tracking-wide">
+                      Total amount due (R)
+                    </div>
+                    <div className="text-xl font-bold text-amber-900 mt-1 tabular-nums">
+                      {totalAmountDue.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </div>
+                    <div className="text-[11px] text-amber-700/80 mt-0.5">
+                      Across last 6 invoices
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!invoiceLoading &&
+                !invoiceError &&
+                invoiceSummaries.length === 0 && (
+                  <p className="text-xs text-slate-500">
+                    No invoice PDFs processed yet. Upload a bulk set to see the
+                    extracted data here.
+                  </p>
+                )}
+
+              {!invoiceLoading && lastSixInvoicesChrono.length > 0 && (
+                <div className="overflow-x-auto mt-3">
+                  <table className="min-w-full text-xs sm:text-sm text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50">
+                        <th className="px-2 py-2 font-semibold text-slate-700">
+                          Company
+                        </th>
+                        <th className="px-2 py-2 font-semibold text-slate-700">
+                          Categories
+                        </th>
+                        <th className="px-2 py-2 font-semibold text-slate-700">
+                          Tax Invoice #
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {groupedInvoices.map((group) =>
+                        group.rows.map((inv, idx) => {
+                          const categoriesText = getInvoiceCategoriesText(inv);
+                          const showCompanyCell = idx === 0;
+
+                          return (
+                            <tr
+                              key={`${group.company}-${inv.tax_invoice_number}-${idx}`}
+                              className="border-b border-slate-100 hover:bg-slate-50/60"
+                            >
+                              {showCompanyCell && (
+                                <td
+                                  rowSpan={group.rows.length}
+                                  className="px-2 py-1 align-top font-medium text-slate-900"
+                                >
+                                  {group.company}
+                                </td>
+                              )}
+                              <td className="px-2 py-1 text-slate-700">
+                                {categoriesText}
+                              </td>
+                              <td className="px-2 py-1">
+                                {inv.tax_invoice_number || "—"}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            <aside className="bg-white rounded-3xl shadow border border-slate-200 p-5 flex flex-col h-full">
+              <h2 className="text-lg font-semibold text-slate-900">
+                ESG Environmental – AI Narrative
+              </h2>
+              <p className="text-xs text-slate-500 mt-1 mb-3">
+                Generated commentary based on your uploaded environmental
+                metrics and invoice data.
+              </p>
+
+              <div className="flex-1 min-h-0">
+                {loading || invoiceAiLoading ? (
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="animate-pulse">
+                        <div className="h-4 bg-slate-200 rounded w-3/4 mb-2" />
+                        <div className="h-3 bg-slate-200 rounded w-full" />
+                      </div>
+                    ))}
+                  </div>
+                ) : error || invoiceAiError ? (
+                  <div className="p-4 bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 rounded-xl">
+                    <p className="text-rose-600 text-sm">
+                      {error || invoiceAiError}
+                    </p>
+                  </div>
+                ) : hasInvoiceInsights ||
+                  (environmentalInsights &&
+                    environmentalInsights.length > 0) ? (
+                  <div className="h-full overflow-hidden">
+                    <ul className="h-full overflow-y-auto pr-2 space-y-3">
+                      {(hasInvoiceInsights
+                        ? invoiceAiInsights
+                        : environmentalInsights || []
+                      )
+                        .slice(0, 8)
+                        .map((insight, idx) => (
+                          <li key={idx} className="flex items-start gap-3">
+                            <div className="w-2 h-2 bg-sky-500 rounded-full mt-2 flex-shrink-0" />
+                            <p className="text-sm text-slate-700 leading-relaxed">
+                              {insight}
+                            </p>
+                          </li>
                         ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
+                    </ul>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <FiActivity className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+                    <p className="text-slate-600 text-sm">
+                      Upload environmental data or invoices to generate AI
+                      insights
+                    </p>
+                  </div>
+                )}
               </div>
-            </div>
-
-            {/* Status Overview */}
-            <div className="bg-white rounded-lg border border-gray-300 p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Governance Status Overview</h3>
-              <div className="space-y-3">
-                <GovernanceStatus
-                  status="compliant"
-                  label="Corporate Governance Framework"
-                  description="Board structure, reporting standards, and oversight mechanisms"
-                />
-                
-                <GovernanceStatus
-                  status="in-progress"
-                  label="Ethics & Compliance Program"
-                  description="Code of conduct, anti-bribery policy, and whistleblower system"
-                />
-                
-                <GovernanceStatus
-                  status="compliant"
-                  label="Data Privacy & Security"
-                  description="Data protection, encryption, and access controls"
-                />
-                
-                <GovernanceStatus
-                  status="needs-review"
-                  label="Supply Chain Governance"
-                  description="Supplier screening, audits, and ESG compliance"
-                />
-              </div>
-            </div>
+            </aside>
           </div>
         );
     }
   };
 
+  const InvoiceDetailModal = () => {
+    if (!selectedInvoice) return null;
+
+    const sixMonthEnergy = getInvoiceSixMonthEnergy(selectedInvoice);
+    const taxInvoice = getTaxInvoiceIdentifier(selectedInvoice);
+    const estimatedCarbon = sixMonthEnergy * EF_ELECTRICITY_T_PER_KWH;
+    const history = Array.isArray(selectedInvoice.sixMonthHistory)
+      ? selectedInvoice.sixMonthHistory
+      : [];
+
+    return (
+      <AnimatePresence>
+        {showInvoiceModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+            onClick={() => setShowInvoiceModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">
+                      Invoice Details
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Detailed view of extracted invoice data
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowInvoiceModal(false)}
+                    className="p-2 hover:bg-gray-100 rounded-lg"
+                  >
+                    <FaTimes className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">
+                        Company
+                      </h3>
+                      <p className="text-lg font-semibold text-gray-900">
+                        {getCompanyName(selectedInvoice)}
+                      </p>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">
+                        Filename
+                      </h3>
+                      <p className="text-sm text-gray-900 font-mono">
+                        {selectedInvoice.filename}
+                      </p>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">
+                        Categories
+                      </h3>
+                      <p className="text-sm text-gray-900">
+                        {getInvoiceCategoriesText(selectedInvoice)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">
+                        Invoice Date
+                      </h3>
+                      <p className="text-lg font-semibold text-gray-900">
+                        {selectedInvoice.invoice_date || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">
+                        Tax Invoice #
+                      </h3>
+                      <p className="text-lg font-semibold text-gray-900 font-mono">
+                        {taxInvoice || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">
+                        Total Charges
+                      </h3>
+                      <p className="text-lg font-semibold text-gray-900">
+                        R{" "}
+                        {selectedInvoice.total_current_charges
+                          ? Number(
+                              selectedInvoice.total_current_charges
+                            ).toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })
+                          : "—"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                  <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+                        <FiZap className="w-5 h-5 text-emerald-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-emerald-900">
+                          Total Energy
+                        </p>
+                        <p className="text-xl font-bold text-emerald-700">
+                          {sixMonthEnergy
+                            ? sixMonthEnergy.toLocaleString(undefined, {
+                                maximumFractionDigits: 0,
+                              })
+                            : "—"}{" "}
+                          kWh
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-200 rounded-2xl p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                        <FiDollarSign className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-blue-900">
+                          Total Charges
+                        </p>
+                        <p className="text-xl font-bold text-blue-700">
+                          R{" "}
+                          {selectedInvoice.total_current_charges
+                            ? Number(
+                                selectedInvoice.total_current_charges
+                              ).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })
+                            : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-200 rounded-2xl p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center">
+                        <FiCloud className="w-5 h-5 text-rose-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-rose-900">
+                          Estimated Carbon
+                        </p>
+                        <p className="text-xl font-bold text-rose-700">
+                          {sixMonthEnergy
+                            ? estimatedCarbon.toFixed(1)
+                            : "—"}{" "}
+                          tCO₂e
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {history.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                      Monthly Breakdown
+                    </h3>
+                    <div className="overflow-x-auto rounded-xl border border-gray-200">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                              Month
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                              Energy (kWh)
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                              Charges (R)
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                              Carbon (tCO₂e)
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 bg-white">
+                          {history.map((month, index) => {
+                            const monthEnergy =
+                              Number(
+                                month.energyKWh ?? month.energy_kwh ?? 0
+                              ) || 0;
+                            const monthCharges =
+                              Number(
+                                month.total_current_charges ??
+                                  month.current_charges ??
+                                  0
+                              ) || 0;
+                            const monthCarbon =
+                              monthEnergy * EF_ELECTRICITY_T_PER_KWH;
+
+                            return (
+                              <tr
+                                key={index}
+                                className="hover:bg-gray-50"
+                              >
+                                <td className="px-4 py-3 text-sm text-gray-700">
+                                  {month.month_label ||
+                                    `Month ${index + 1}`}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                                  {monthEnergy.toLocaleString(undefined, {
+                                    maximumFractionDigits: 0,
+                                  })}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                                  R{" "}
+                                  {monthCharges.toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                                  {monthCarbon.toFixed(1)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header - Matching the social screenshot style */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">ESG – Governance</h1>
-              <p className="text-sm text-gray-600 mt-2">
-                Corporate governance, ethics, compliance, data privacy and supply chain oversight laid out in an ESG governance format similar to listed company disclosures.
-              </p>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleDownloadReport}
-                className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
-              >
-                <FiDownload className="w-4 h-4" />
-                Download/Governance Report
-              </button>
-            </div>
-          </div>
-          
-          {/* Tabs Navigation */}
-          <div className="mt-6 flex space-x-1 overflow-x-auto">
-            {TABS.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                    isActive
-                      ? "bg-blue-50 text-blue-700 border border-blue-200"
-                      : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
-                  }`}
-                >
-                  {Icon && <Icon className="w-4 h-4" />}
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Governance Progress Summary */}
-        <div className="mb-8">
-          <div className="bg-white rounded-lg border border-gray-300 p-6 mb-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">GOVERNANCE</h2>
-            <p className="text-gray-700 mb-6">
-              Corporate governance, ethics, compliance, data privacy and supply chain oversight presented in a board-ready governance layout aligned with ESG reporting expectations.
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto space-y-8">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+          <div>
+            <p className="text-xs font-semibold tracking-[0.16em] text-emerald-700 uppercase">
+              AfricaESG.AI
             </p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-gray-900">GOVERNANCE SCORE</h3>
-                <div className="text-3xl font-bold text-gray-900">{governanceScore.toFixed(1)}/100</div>
-                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-600"
-                    style={{ width: `${governanceScore}%` }}
-                  />
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-gray-900">SUPPLIER COMPLIANCE</h3>
-                <div className="text-3xl font-bold text-gray-900">{supplierCompliance}%</div>
-                <div className="text-sm text-gray-600">of suppliers</div>
-              </div>
-              
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-gray-900">AUDIT COMPLETION</h3>
-                <div className="text-3xl font-bold text-gray-900">{auditCompletion}%</div>
-                <div className="text-sm text-gray-600">annual target</div>
-              </div>
-              
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-gray-900">ETHICS RATING</h3>
-                <div className="text-3xl font-bold text-gray-900">{getMetric("ethicsRating", "4.2")}/5</div>
-                <div className="text-sm text-gray-600">compliance score</div>
-              </div>
-            </div>
-          </div>
-
-          {/* AI Narrative Section - Matching social screenshot style */}
-          <div className="bg-white rounded-lg border border-gray-300 p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">ESG Governance – AI Narrative</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Generated commentary based on your uploaded ESG governance metrics, mirroring the narrative style of listed company ESG reports.
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight">
+              ESG – Environmental
+            </h1>
+            <p className="mt-2 text-sm text-gray-600 max-w-2xl">
+              Energy, carbon, water, waste, and fuel performance with PDF
+              invoice integration for automated data extraction.
             </p>
-            
-            <div className="space-y-4">
-              {aiInsights.map((insight, index) => (
-                <div key={index} className="flex items-start gap-3">
-                  <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0" />
-                  <p className="text-gray-700 leading-relaxed">{insight}</p>
-                </div>
-              ))}
+          </div>
+
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleDownloadEnvReport}
+            className="group relative inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-full shadow-md text-sm font-semibold"
+          >
+            <FaFilePdf className="w-4 h-4" />
+            Download Report
+          </motion.button>
+        </header>
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.1 }}
+          className="relative"
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 rounded-3xl blur-3xl" />
+          <div className="relative bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-xl">
+            <div className="flex flex-wrap gap-2 p-3">
+              {TABS.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <motion.button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    whileHover={{ y: -2 }}
+                    whileTap={{ scale: 0.95 }}
+                    className={`group relative flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all duration-300 ${
+                      activeTab === tab.id
+                        ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg"
+                        : "text-gray-700 hover:text-emerald-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <Icon
+                      className={`w-4 h-4 transition-transform group-hover:scale-110 ${
+                        activeTab === tab.id ? "text-white" : "text-gray-400"
+                      }`}
+                    />
+                    <span>{tab.label}</span>
+                    {activeTab === tab.id && (
+                      <motion.div
+                        layoutId="tab-indicator"
+                        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-1 bg-white/50 rounded-full"
+                      />
+                    )}
+                  </motion.button>
+                );
+              })}
             </div>
           </div>
-        </div>
+        </motion.div>
 
-        {/* Tab Content */}
-        {renderTabContent()}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            variants={tabContentVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: 0.3 }}
+          >
+            {renderTabContent()}
+          </motion.div>
+        </AnimatePresence>
 
-        {/* Governance Sections */}
-        <div className="mt-8 space-y-6">
-          {/* Corporate Governance Section */}
-          <div className="bg-white rounded-lg border border-gray-300 p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Corporate Governance</h3>
-            <p className="text-gray-700 mb-4">
-              Framework compliance, board effectiveness, and reporting standards that ensure accountability and transparency.
-            </p>
-            
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="font-medium text-gray-700">Board Independence</span>
-                <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">
-                  {getMetric("boardIndependence", "60%")}
-                </span>
-              </div>
-              
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="font-medium text-gray-700">Committee Structure</span>
-                <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">
-                  {getMetric("committeeStructure", "Established")}
-                </span>
-              </div>
-              
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="font-medium text-gray-700">Reporting Framework</span>
-                <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">
-                  {getMetric("reportingFramework", "Integrated")}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Ethics & Compliance Section */}
-          <div className="bg-white rounded-lg border border-gray-300 p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Ethics & Compliance</h3>
-            <p className="text-gray-700 mb-4">
-              Policies, training, and monitoring systems to prevent misconduct and ensure regulatory compliance.
-            </p>
-            
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="font-medium text-gray-700">Code of Conduct</span>
-                <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">
-                  {getMetric("codeStatus", "Implemented")}
-                </span>
-              </div>
-              
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="font-medium text-gray-700">Compliance Training</span>
-                <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-semibold">
-                  {getMetric("trainingCompletion", "98%")}
-                </span>
-              </div>
-              
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="font-medium text-gray-700">Whistleblower System</span>
-                <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">
-                  {getMetric("whistleblowerStatus", "Active")}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer - Matching the social screenshot style */}
-      <footer className="bg-white border-t border-gray-200 py-6">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center text-sm text-gray-600">
-            <p>Powered by AfricaESG.AI</p>
-            <p className="mt-1">Governance metrics and insights based on your uploaded ESG data</p>
-          </div>
-        </div>
-      </footer>
-
-      {/* FOOTER - FIXED: Removed extra items */}
-        <footer className="mt-8 pt-6 border-t border-slate-200 text-center">
-          <div className="text-sm text-slate-600">
+        <footer className="mt-8 pt-6 border-t border-gray-200 text-center">
+          <div className="text-sm text-gray-600">
             <p>Powered by AfricaESG.AI</p>
           </div>
         </footer>
+      </div>
+
+      <InvoiceDetailModal />
     </div>
   );
 }

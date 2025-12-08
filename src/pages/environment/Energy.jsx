@@ -37,6 +37,9 @@ import {
   FiRefreshCw,
   FiEye,
   FiEyeOff,
+  FiDownload,
+  FiChevronDown,
+  FiClipboard,
 } from "react-icons/fi";
 import {
   FaFilePdf,
@@ -52,6 +55,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { SimulationContext } from "../../context/SimulationContext";
 import { API_BASE_URL } from "../../config/api";
 import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+
+// ✅ NEW: import static logos from assets (adjust paths/names as needed)
+import MainLogo from "../../assets/AfricaESG.AI.png";
+import SecondaryLogo from "../../assets/ethekwin.png";
 
 const TABS = [
   { id: "overview", label: "Overview", icon: FiActivity },
@@ -823,6 +831,251 @@ const InvoiceTable = ({ invoices, onViewDetails }) => {
   );
 };
 
+// ✅ NEW: Download Menu Component
+const DownloadMenu = ({ onDownload, isOpen, onClose, isDownloading }) => {
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <motion.div
+      ref={menuRef}
+      initial={{ opacity: 0, scale: 0.95, y: -10 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95, y: -10 }}
+      className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 overflow-hidden"
+    >
+      <div className="p-2">
+        <div className="px-3 py-2 border-b border-gray-100">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            Export Report
+          </p>
+        </div>
+        
+        <div className="space-y-1 p-2">
+          <button
+            onClick={() => onDownload("pdf")}
+            disabled={isDownloading}
+            className="flex items-center gap-3 w-full px-3 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <FaFilePdf className="w-4 h-4 text-red-500" />
+            <div className="text-left">
+              <p className="font-medium">Download PDF Report</p>
+              <p className="text-xs text-gray-500">High-quality report with charts</p>
+            </div>
+          </button>
+          
+          <button
+            onClick={() => onDownload("csv")}
+            disabled={isDownloading}
+            className="flex items-center gap-3 w-full px-3 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <FiFileText className="w-4 h-4 text-blue-600" />
+            <div className="text-left">
+              <p className="font-medium">Download CSV Data</p>
+              <p className="text-xs text-gray-500">Simple spreadsheet format</p>
+            </div>
+          </button>
+        </div>
+        
+        <div className="px-3 py-2 border-t border-gray-100">
+          <p className="text-xs text-gray-500">
+            Includes current view and all data
+          </p>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+// ✅ ENHANCED: Download Button Component
+const DownloadButton = ({ 
+  totalEnergyKwh,
+  totalEnergy,
+  totalInvoiceCo2Tonnes,
+  totalWater,
+  totalWaste,
+  totalFuel,
+  invoiceSummaries,
+  chartData,
+  activeTab,
+  monthlySeries,
+  onGenerateESGReport, // ✅ NEW: Added ESG report function
+  onGenerateEnvironmentalReport // ✅ NEW: Added environmental report function
+}) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleDownload = async (format) => {
+    setIsDownloading(true);
+    setIsMenuOpen(false);
+
+    try {
+      const timestamp = new Date().toISOString().split('T')[0];
+
+      switch (format) {
+        case "pdf":
+          if (onGenerateEnvironmentalReport) {
+            onGenerateEnvironmentalReport("pdf");
+          }
+          break;
+
+        case "csv":
+          if (onGenerateEnvironmentalReport) {
+            onGenerateEnvironmentalReport("csv");
+          }
+          break;
+
+        case "esg-report":
+          if (onGenerateESGReport) {
+            onGenerateESGReport("pdf");
+          }
+          break;
+
+        default:
+          if (onGenerateEnvironmentalReport) {
+            onGenerateEnvironmentalReport("pdf");
+          }
+      }
+
+      // Show success notification
+      console.log(`Downloaded ${format} report successfully`);
+    } catch (error) {
+      console.error("Download failed:", error);
+      alert("Failed to generate report. Please try again.");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={() => setIsMenuOpen(!isMenuOpen)}
+        disabled={isDownloading}
+        className="group relative inline-flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-5 py-2.5 rounded-full shadow-lg hover:shadow-xl text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {isDownloading ? (
+          <>
+            <FiRefreshCw className="w-4 h-4 animate-spin" />
+            Preparing...
+          </>
+        ) : (
+          <>
+            <FiDownload className="w-4 h-4" />
+            Download Report
+            <FiChevronDown className={`w-3 h-3 transition-transform ${isMenuOpen ? "rotate-180" : ""}`} />
+          </>
+        )}
+      </motion.button>
+
+      <DownloadMenu
+        isOpen={isMenuOpen}
+        onClose={() => setIsMenuOpen(false)}
+        onDownload={handleDownload}
+        isDownloading={isDownloading}
+      />
+    </div>
+  );
+};
+
+// ✅ NEW: ESG Metric Card Component
+const ESGMetricCard = ({ title, value, icon: Icon, color, unit }) => {
+  const colors = {
+    emerald: "from-emerald-500 to-teal-500",
+    blue: "from-blue-500 to-cyan-500",
+    red: "from-rose-500 to-pink-500",
+    amber: "from-amber-500 to-orange-500",
+    indigo: "from-indigo-500 to-purple-500",
+    green: "from-green-500 to-emerald-500",
+    purple: "from-purple-500 to-indigo-500",
+  };
+
+  return (
+    <motion.div
+      whileHover={{ scale: 1.02, transition: { duration: 0.2 } }}
+      className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white to-gray-50 border border-gray-200 shadow-lg"
+    >
+      <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-white/20 to-transparent rounded-full -translate-y-12 translate-x-12" />
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div
+            className={`p-3 rounded-xl bg-gradient-to-br ${
+              colors[color] || "from-gray-100 to-gray-200"
+            }`}
+          >
+            <Icon className="w-6 h-6 text-white" />
+          </div>
+        </div>
+        <div>
+          <p className="text-sm font-medium text-gray-600 mb-1">{title}</p>
+          <p className="text-2xl font-bold text-gray-900">
+            {value}{" "}
+            {unit && <span className="text-sm font-normal text-gray-500">{unit}</span>}
+          </p>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+// ✅ NEW: ESG Performance Report Data
+const ESG_REPORT_DATA = {
+  companyInfo: {
+    company: "Company Name",
+    reportPeriod: "2025",
+  },
+  performanceSummary: {
+    environmental: {
+      energyConsumption: "1,156,250 kWh",
+      renewableEnergy: "0.0%",
+      carbonEmissions: "18,500 t CO₂e",
+      monthlyAverage: "0 kWh",
+      peakConsumption: "0 kWh",
+    },
+    social: {
+      supplierDiversity: "20%",
+      customerSatisfaction: "78%",
+    },
+    governance: {
+      corporateGovernance: "Strong",
+      iso9001Compliance: "ISO 9001 Certified",
+    },
+  },
+  financialCarbonKPIs: {
+    carbonTaxExposure: "R 27,750,000",
+    taxAllowances: "R 8,325,000",
+    carbonCredits: "2,775 tonnes",
+    energySavings: "138,750 kWh",
+    costSavingsPotential: "R 0",
+  },
+  aiAnalystInsights: [
+    "Environmental performance baseline reflects current energy use, emissions, waste and fuel consumption derived from your latest ESG dataset.",
+    "Comparable African industrial peers typically target steady reductions in energy intensity and emissions over a 3–5 year horizon, with growing use of renewables.",
+    "Against this benchmark, your environmental profile shows clear opportunities to improve efficiency, reduce carbon exposure and strengthen waste and fuel management.",
+    "Prioritise high-impact efficiency projects at the most energy-intensive sites to reduce both cost and carbon tax exposure.",
+    "Investigate key waste streams for reduction, recycling or beneficiation opportunities that support circular economy outcomes.",
+  ],
+};
+
 export default function EnvironmentalCategory() {
   const { environmentalMetrics, environmentalInsights, loading, error } =
     useContext(SimulationContext);
@@ -1328,12 +1581,6 @@ export default function EnvironmentalCategory() {
     Array.isArray(invoiceAiInsights) &&
     invoiceAiInsights.length > 0;
 
-  const handleDownloadEnvReport = () => {
-    const doc = new jsPDF();
-    doc.text("AfricaESG Environmental Report", 20, 20);
-    doc.save("AfricaESG_Environmental_Report.pdf");
-  };
-
   const radarData = [
     { subject: "Energy", A: totalEnergy / 10000, fullMark: 1 },
     { subject: "Carbon", A: avgCarbon / 10, fullMark: 1 },
@@ -1406,8 +1653,692 @@ export default function EnvironmentalCategory() {
     [chartData]
   );
 
+  // ✅ NEW: Generate Environmental Report PDF
+  const generateEnvironmentalReportPDF = () => {
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+    });
+
+    // Create image objects for logos
+    const mainLogoImg = new Image();
+    const secondaryLogoImg = new Image();
+
+    // Set logo sources (these will be loaded from imported assets)
+    mainLogoImg.src = MainLogo;
+    secondaryLogoImg.src = SecondaryLogo;
+
+    // Header background
+    doc.setFillColor(242, 247, 255);
+    doc.rect(0, 0, 210, 30, "F");
+
+    // Try to add logos if they're loaded
+    try {
+      doc.addImage(mainLogoImg, "PNG", 15, 6, 35, 15);
+    } catch (e) {
+      console.warn("Failed to add main logo:", e);
+    }
+
+    try {
+      doc.addImage(secondaryLogoImg, "PNG", 160, 6, 35, 15);
+    } catch (e) {
+      console.warn("Failed to add secondary logo:", e);
+    }
+
+    // Title
+    doc.setFontSize(20);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Environmental Performance Report", 105, 40, { align: "center" });
+
+    // Subtitle
+    doc.setFontSize(11);
+    doc.setTextColor(100, 116, 139);
+    doc.text("AfricaESG.AI Platform - Generated Report", 105, 47, { align: "center" });
+
+    // Date
+    const now = new Date();
+    doc.setFontSize(10);
+    doc.text(`Generated: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`, 105, 54, { align: "center" });
+
+    // Executive Summary
+    doc.setFontSize(16);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Executive Summary", 20, 70);
+
+    doc.setFontSize(10);
+    doc.setTextColor(71, 85, 105);
+    
+    const summaryLines = [
+      `• Total Energy Consumption: ${(totalEnergyKwh || totalEnergy || 0).toLocaleString()} kWh`,
+      `• Carbon Emissions: ${(totalInvoiceCo2Tonnes || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })} tCO₂e`,
+      `• Water Usage: ${(totalWater || 0).toLocaleString()} m³`,
+      `• Waste Generated: ${(totalWaste || 0).toFixed(1)} tonnes`,
+      `• Fuel Consumption: ${(totalFuel || 0).toLocaleString()} liters`,
+      `• Active View: ${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}`,
+    ];
+
+    summaryLines.forEach((line, index) => {
+      doc.text(line, 25, 80 + (index * 5));
+    });
+
+    // Key Metrics Table
+    doc.setFontSize(16);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Key Performance Indicators", 20, 115);
+
+    const tableData = [
+      ["Metric", "Value", "Unit"],
+      ["Total Energy", (totalEnergyKwh || totalEnergy || 0).toLocaleString(), "kWh"],
+      ["Carbon Emissions", (totalInvoiceCo2Tonnes || 0).toLocaleString(undefined, { maximumFractionDigits: 1 }), "tCO₂e"],
+      ["Water Usage", (totalWater || 0).toLocaleString(), "m³"],
+      ["Waste Generated", (totalWaste || 0).toFixed(1), "tonnes"],
+      ["Fuel Consumption", (totalFuel || 0).toLocaleString(), "liters"],
+    ];
+
+    autoTable(doc, {
+      startY: 120,
+      head: [tableData[0]],
+      body: tableData.slice(1),
+      theme: "striped",
+      headStyles: { fillColor: [16, 185, 129] },
+      margin: { left: 20, right: 20 },
+    });
+
+    // Recent Data
+    doc.setFontSize(16);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Recent Monthly Data", 20, doc.lastAutoTable.finalY + 15);
+
+    if (monthlySeries && monthlySeries.length > 0) {
+      const recentData = monthlySeries.slice(-6).map(item => [
+        item.name,
+        (item.energy || 0).toLocaleString(),
+        (item.carbon || 0).toFixed(1),
+        (item.water || 0).toLocaleString(),
+        (item.waste || 0).toFixed(1),
+        (item.fuel || 0).toLocaleString(),
+      ]);
+
+      autoTable(doc, {
+        startY: doc.lastAutoTable.finalY + 20,
+        head: [["Month", "Energy (kWh)", "Carbon (tCO₂e)", "Water (m³)", "Waste (t)", "Fuel (L)"]],
+        body: recentData,
+        theme: "grid",
+        margin: { left: 20, right: 20 },
+      });
+    }
+
+    // Invoice Summary (if available)
+    if (invoiceSummaries && invoiceSummaries.length > 0) {
+      doc.setFontSize(16);
+      doc.setTextColor(15, 23, 42);
+      doc.text("Invoice Summary", 20, doc.lastAutoTable.finalY + 20);
+
+      const invoiceData = [
+        ["Company", "Invoice Date", "Energy (kWh)", "Charges (R)"],
+        ...invoiceSummaries.slice(0, 5).map(inv => {
+          const sixMonthEnergy = getInvoiceSixMonthEnergy(inv);
+          return [
+            getCompanyName(inv).substring(0, 30),
+            inv.invoice_date || "—",
+            sixMonthEnergy ? sixMonthEnergy.toLocaleString() : "—",
+            inv.total_current_charges ? `R ${Number(inv.total_current_charges).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "—"
+          ];
+        })
+      ];
+
+      autoTable(doc, {
+        startY: doc.lastAutoTable.finalY + 25,
+        head: [invoiceData[0]],
+        body: invoiceData.slice(1),
+        theme: "striped",
+        headStyles: { fillColor: [59, 130, 246] },
+        margin: { left: 20, right: 20 },
+      });
+    }
+
+    // Footer
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Page ${i} of ${pageCount}`, 105, 290, { align: "center" });
+      doc.text("Confidential - AfricaESG.AI © 2024", 105, 295, { align: "center" });
+    }
+
+    return doc;
+  };
+
+  // ✅ NEW: Generate ESG Report PDF
+  const generateESGReportPDF = () => {
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+    });
+
+    // Create image objects for logos
+    const mainLogoImg = new Image();
+    const secondaryLogoImg = new Image();
+
+    // Set logo sources
+    mainLogoImg.src = MainLogo;
+    secondaryLogoImg.src = SecondaryLogo;
+
+    // Header background
+    doc.setFillColor(242, 247, 255);
+    doc.rect(0, 0, 210, 30, "F");
+
+    // Try to add logos if they're loaded
+    try {
+      doc.addImage(mainLogoImg, "PNG", 15, 6, 35, 15);
+    } catch (e) {
+      console.warn("Failed to add main logo:", e);
+    }
+
+    try {
+      doc.addImage(secondaryLogoImg, "PNG", 160, 6, 35, 15);
+    } catch (e) {
+      console.warn("Failed to add secondary logo:", e);
+    }
+
+    // Title
+    doc.setFontSize(20);
+    doc.setTextColor(15, 23, 42);
+    doc.text("ESG Performance Report", 105, 40, { align: "center" });
+
+    // Subtitle
+    doc.setFontSize(11);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Generated by AfricaESG.AI Platform", 105, 47, { align: "center" });
+
+    // Date
+    const now = new Date();
+    doc.setFontSize(10);
+    doc.text(`Report Period: ${ESG_REPORT_DATA.companyInfo.reportPeriod} • Generated: ${now.toLocaleDateString()}`, 105, 54, { align: "center" });
+
+    // Company Information
+    doc.setFontSize(16);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Company Information", 20, 70);
+
+    doc.setFontSize(10);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Company: ${ESG_REPORT_DATA.companyInfo.company}`, 20, 78);
+    doc.text(`Report Period: ${ESG_REPORT_DATA.companyInfo.reportPeriod}`, 20, 84);
+
+    // ESG Performance Summary
+    doc.setFontSize(16);
+    doc.setTextColor(15, 23, 42);
+    doc.text("ESG Performance Summary", 20, 95);
+
+    // Environmental Table
+    const envData = [
+      ["Energy Consumption", ESG_REPORT_DATA.performanceSummary.environmental.energyConsumption],
+      ["Renewable Energy", ESG_REPORT_DATA.performanceSummary.environmental.renewableEnergy],
+      ["Carbon Emissions", ESG_REPORT_DATA.performanceSummary.environmental.carbonEmissions],
+      ["Monthly Average", ESG_REPORT_DATA.performanceSummary.environmental.monthlyAverage],
+      ["Peak Consumption", ESG_REPORT_DATA.performanceSummary.environmental.peakConsumption],
+    ];
+
+    autoTable(doc, {
+      startY: 100,
+      head: [["Environmental Metrics", "Value"]],
+      body: envData,
+      theme: "striped",
+      headStyles: { fillColor: [16, 185, 129] },
+      margin: { left: 20, right: 20 },
+    });
+
+    // Social & Governance Tables
+    const socialData = [
+      ["Supplier Diversity", ESG_REPORT_DATA.performanceSummary.social.supplierDiversity],
+      ["Customer Satisfaction", ESG_REPORT_DATA.performanceSummary.social.customerSatisfaction],
+    ];
+
+    const govData = [
+      ["Corporate Governance", ESG_REPORT_DATA.performanceSummary.governance.corporateGovernance],
+      ["ISO 9001 Compliance", ESG_REPORT_DATA.performanceSummary.governance.iso9001Compliance],
+    ];
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 10,
+      head: [["Social Metrics", "Value"]],
+      body: socialData,
+      theme: "striped",
+      headStyles: { fillColor: [59, 130, 246] },
+      margin: { left: 20, right: 20 },
+    });
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 10,
+      head: [["Governance Metrics", "Value"]],
+      body: govData,
+      theme: "striped",
+      headStyles: { fillColor: [139, 92, 246] },
+      margin: { left: 20, right: 20 },
+    });
+
+    // Financial & Carbon KPIs
+    doc.setFontSize(16);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Financial & Carbon KPIs", 20, doc.lastAutoTable.finalY + 15);
+
+    const financialData = [
+      ["Carbon Tax Exposure", ESG_REPORT_DATA.financialCarbonKPIs.carbonTaxExposure],
+      ["Tax Allowances", ESG_REPORT_DATA.financialCarbonKPIs.taxAllowances],
+      ["Carbon Credits", ESG_REPORT_DATA.financialCarbonKPIs.carbonCredits],
+      ["Energy Savings", ESG_REPORT_DATA.financialCarbonKPIs.energySavings],
+      ["Cost Savings Potential", ESG_REPORT_DATA.financialCarbonKPIs.costSavingsPotential],
+    ];
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 20,
+      head: [["Financial & Carbon KPIs", "Value"]],
+      body: financialData,
+      theme: "grid",
+      headStyles: { fillColor: [245, 158, 11] },
+      margin: { left: 20, right: 20 },
+    });
+
+    // AI Analyst Insights
+    doc.setFontSize(16);
+    doc.setTextColor(15, 23, 42);
+    doc.text("AI Analyst Insights", 20, doc.lastAutoTable.finalY + 20);
+
+    const insightsData = ESG_REPORT_DATA.aiAnalystInsights.map((insight, index) => [
+      `${index + 1}.`,
+      insight,
+    ]);
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 25,
+      head: [["#", "Insight"]],
+      body: insightsData,
+      theme: "plain",
+      margin: { left: 20, right: 20 },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 'auto' },
+      },
+    });
+
+    // Footer
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Page ${i} of ${pageCount}`, 105, 290, { align: "center" });
+      doc.text("Confidential - AfricaESG.AI © 2024", 105, 295, { align: "center" });
+    }
+
+    return doc;
+  };
+
+  const generateCSVData = () => {
+    const csvRows = [];
+    
+    // Header
+    csvRows.push(["Environmental Performance Report"]);
+    csvRows.push(["Generated:", new Date().toISOString()]);
+    csvRows.push([]);
+    
+    // Summary section
+    csvRows.push(["SUMMARY METRICS"]);
+    csvRows.push(["Metric", "Value", "Unit"]);
+    csvRows.push(["Total Energy", totalEnergyKwh || totalEnergy || 0, "kWh"]);
+    csvRows.push(["Carbon Emissions", totalInvoiceCo2Tonnes || 0, "tCO₂e"]);
+    csvRows.push(["Water Usage", totalWater || 0, "m³"]);
+    csvRows.push(["Waste Generated", totalWaste || 0, "tonnes"]);
+    csvRows.push(["Fuel Consumption", totalFuel || 0, "liters"]);
+    csvRows.push([]);
+    
+    // Monthly data
+    if (monthlySeries && monthlySeries.length > 0) {
+      csvRows.push(["MONTHLY DATA"]);
+      csvRows.push(["Month", "Energy (kWh)", "Carbon (tCO₂e)", "Water (m³)", "Waste (t)", "Fuel (L)"]);
+      
+      monthlySeries.forEach(item => {
+        csvRows.push([
+          item.name,
+          item.energy || 0,
+          item.carbon || 0,
+          item.water || 0,
+          item.waste || 0,
+          item.fuel || 0,
+        ]);
+      });
+    }
+    
+    // Invoice data (if available)
+    if (invoiceSummaries && invoiceSummaries.length > 0) {
+      csvRows.push([]);
+      csvRows.push(["INVOICE DATA"]);
+      csvRows.push(["Company", "Invoice Date", "Tax Invoice #", "Categories", "6-Month Energy (kWh)", "Current Charges (R)", "Est. Carbon (tCO₂e)"]);
+      
+      invoiceSummaries.slice(0, 10).forEach(inv => {
+        const sixMonthEnergy = getInvoiceSixMonthEnergy(inv);
+        const estimatedCarbon = sixMonthEnergy * EF_ELECTRICITY_T_PER_KWH;
+        
+        csvRows.push([
+          getCompanyName(inv),
+          inv.invoice_date || "—",
+          getTaxInvoiceIdentifier(inv) || "—",
+          getInvoiceCategoriesText(inv),
+          sixMonthEnergy || 0,
+          inv.total_current_charges || 0,
+          estimatedCarbon || 0,
+        ]);
+      });
+    }
+    
+    return csvRows;
+  };
+
+  const generateTextReport = () => {
+    const lines = [];
+    
+    lines.push("=".repeat(60));
+    lines.push("ESG PERFORMANCE REPORT");
+    lines.push("Generated by AfricaESG.AI Platform");
+    lines.push("=".repeat(60));
+    lines.push("");
+    
+    lines.push("COMPANY INFORMATION");
+    lines.push(`Company: ${ESG_REPORT_DATA.companyInfo.company}`);
+    lines.push(`Report Period: ${ESG_REPORT_DATA.companyInfo.reportPeriod}`);
+    lines.push("");
+    
+    lines.push("ESG PERFORMANCE SUMMARY");
+    lines.push("");
+    lines.push("Environmental (from Invoice Analysis):");
+    lines.push(`- Energy Consumption: ${ESG_REPORT_DATA.performanceSummary.environmental.energyConsumption}`);
+    lines.push(`- Renewable Energy: ${ESG_REPORT_DATA.performanceSummary.environmental.renewableEnergy}`);
+    lines.push(`- Carbon Emissions: ${ESG_REPORT_DATA.performanceSummary.environmental.carbonEmissions}`);
+    lines.push(`- Monthly Average: ${ESG_REPORT_DATA.performanceSummary.environmental.monthlyAverage}`);
+    lines.push(`- Peak Consumption: ${ESG_REPORT_DATA.performanceSummary.environmental.peakConsumption}`);
+    lines.push("");
+    
+    lines.push("Social:");
+    lines.push(`- Supplier Diversity: ${ESG_REPORT_DATA.performanceSummary.social.supplierDiversity}`);
+    lines.push(`- Customer Satisfaction: ${ESG_REPORT_DATA.performanceSummary.social.customerSatisfaction}`);
+    lines.push("");
+    
+    lines.push("Governance:");
+    lines.push(`- Corporate Governance: ${ESG_REPORT_DATA.performanceSummary.governance.corporateGovernance}`);
+    lines.push(`- ISO 9001 Compliance: ${ESG_REPORT_DATA.performanceSummary.governance.iso9001Compliance}`);
+    lines.push("");
+    
+    lines.push("FINANCIAL & CARBON KPIs");
+    lines.push(`- Carbon Tax Exposure: ${ESG_REPORT_DATA.financialCarbonKPIs.carbonTaxExposure}`);
+    lines.push(`- Tax Allowances: ${ESG_REPORT_DATA.financialCarbonKPIs.taxAllowances}`);
+    lines.push(`- Carbon Credits: ${ESG_REPORT_DATA.financialCarbonKPIs.carbonCredits}`);
+    lines.push(`- Energy Savings: ${ESG_REPORT_DATA.financialCarbonKPIs.energySavings}`);
+    lines.push(`- Cost Savings Potential: ${ESG_REPORT_DATA.financialCarbonKPIs.costSavingsPotential}`);
+    lines.push("");
+    
+    lines.push("AI ANALYST INSIGHTS");
+    ESG_REPORT_DATA.aiAnalystInsights.forEach((insight, index) => {
+      lines.push(`${index + 1}. ${insight}`);
+    });
+    lines.push("");
+    lines.push("=".repeat(60));
+    lines.push(`Generated on: ${new Date().toLocaleString()}`);
+    lines.push("AfricaESG.AI © 2024");
+    
+    return lines.join("\n");
+  };
+
+  const handleDownloadEnvironmentalReport = async (format) => {
+    try {
+      const timestamp = new Date().toISOString().split('T')[0];
+
+      switch (format) {
+        case "pdf":
+          const pdfDoc = generateEnvironmentalReportPDF();
+          pdfDoc.save(`AfricaESG_Environmental_Report_${timestamp}.pdf`);
+          break;
+
+        case "csv":
+          const csvRows = generateCSVData();
+          const csvContent = csvRows.map(row => 
+            row.map(cell => `"${cell}"`).join(",")
+          ).join("\n");
+          
+          const csvBlob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+          const csvUrl = URL.createObjectURL(csvBlob);
+          const csvLink = document.createElement("a");
+          csvLink.href = csvUrl;
+          csvLink.download = `Environmental_Data_${timestamp}.csv`;
+          document.body.appendChild(csvLink);
+          csvLink.click();
+          document.body.removeChild(csvLink);
+          URL.revokeObjectURL(csvUrl);
+          break;
+
+        default:
+          const defaultPdf = generateEnvironmentalReportPDF();
+          defaultPdf.save(`AfricaESG_Environmental_Report_${timestamp}.pdf`);
+      }
+
+      console.log(`Downloaded ${format} report successfully`);
+    } catch (error) {
+      console.error("Download failed:", error);
+      alert("Failed to generate report. Please try again.");
+    }
+  };
+
+  const handleDownloadESGReport = async (format) => {
+    try {
+      const timestamp = new Date().toISOString().split('T')[0];
+
+      switch (format) {
+        case "pdf":
+          const pdfDoc = generateESGReportPDF();
+          pdfDoc.save(`AfricaESG_Report_${timestamp}.pdf`);
+          break;
+
+        case "txt":
+          const textContent = generateTextReport();
+          const textBlob = new Blob([textContent], { type: "text/plain;charset=utf-8;" });
+          const textUrl = URL.createObjectURL(textBlob);
+          const textLink = document.createElement("a");
+          textLink.href = textUrl;
+          textLink.download = `ESG_Report_${timestamp}.txt`;
+          document.body.appendChild(textLink);
+          textLink.click();
+          document.body.removeChild(textLink);
+          URL.revokeObjectURL(textUrl);
+          break;
+
+        default:
+          const defaultPdf = generateESGReportPDF();
+          defaultPdf.save(`AfricaESG_Report_${timestamp}.pdf`);
+      }
+
+      console.log(`Downloaded ${format} ESG report successfully`);
+    } catch (error) {
+      console.error("Download failed:", error);
+      alert("Failed to generate ESG report. Please try again.");
+    }
+  };
+
   const renderTabContent = () => {
     switch (activeTab) {
+      case "esg-report":
+        return (
+          <div className="space-y-6">
+            <div className="bg-white rounded-3xl shadow-lg border border-gray-200 p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">ESG Performance Report</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl p-4">
+                  <p className="text-sm font-medium text-emerald-700 mb-1">Company</p>
+                  <p className="text-lg font-bold text-emerald-900">{ESG_REPORT_DATA.companyInfo.company}</p>
+                </div>
+                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-4">
+                  <p className="text-sm font-medium text-blue-700 mb-1">Report Period</p>
+                  <p className="text-lg font-bold text-blue-900">{ESG_REPORT_DATA.companyInfo.reportPeriod}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* ESG Performance Summary */}
+            <div className="bg-white rounded-3xl shadow-lg border border-gray-200 p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-6">ESG Performance Summary</h2>
+              
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                  <FiZap className="text-emerald-600" />
+                  Environmental Performance
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                  <ESGMetricCard
+                    title="Energy Consumption"
+                    value={ESG_REPORT_DATA.performanceSummary.environmental.energyConsumption}
+                    icon={FiZap}
+                    color="emerald"
+                  />
+                  <ESGMetricCard
+                    title="Renewable Energy"
+                    value={ESG_REPORT_DATA.performanceSummary.environmental.renewableEnergy}
+                    icon={FaLeaf}
+                    color="green"
+                  />
+                  <ESGMetricCard
+                    title="Carbon Emissions"
+                    value={ESG_REPORT_DATA.performanceSummary.environmental.carbonEmissions}
+                    icon={FiCloud}
+                    color="red"
+                  />
+                  <ESGMetricCard
+                    title="Monthly Average"
+                    value={ESG_REPORT_DATA.performanceSummary.environmental.monthlyAverage}
+                    icon={FiActivity}
+                    color="blue"
+                  />
+                  <ESGMetricCard
+                    title="Peak Consumption"
+                    value={ESG_REPORT_DATA.performanceSummary.environmental.peakConsumption}
+                    icon={FiZap}
+                    color="amber"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                    <FiActivity className="text-blue-600" />
+                    Social Performance
+                  </h3>
+                  <div className="space-y-4">
+                    <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-4">
+                      <p className="text-sm font-medium text-blue-700 mb-1">Supplier Diversity</p>
+                      <p className="text-2xl font-bold text-blue-900">{ESG_REPORT_DATA.performanceSummary.social.supplierDiversity}</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-4">
+                      <p className="text-sm font-medium text-purple-700 mb-1">Customer Satisfaction</p>
+                      <p className="text-2xl font-bold text-purple-900">{ESG_REPORT_DATA.performanceSummary.social.customerSatisfaction}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                    <FiCheckCircle className="text-indigo-600" />
+                    Governance Performance
+                  </h3>
+                  <div className="space-y-4">
+                    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-4">
+                      <p className="text-sm font-medium text-indigo-700 mb-1">Corporate Governance</p>
+                      <p className="text-2xl font-bold text-indigo-900">{ESG_REPORT_DATA.performanceSummary.governance.corporateGovernance}</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl p-4">
+                      <p className="text-sm font-medium text-emerald-700 mb-1">ISO 9001 Compliance</p>
+                      <p className="text-2xl font-bold text-emerald-900">{ESG_REPORT_DATA.performanceSummary.governance.iso9001Compliance}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Financial & Carbon KPIs */}
+            <div className="bg-white rounded-3xl shadow-lg border border-gray-200 p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-6">Financial & Carbon KPIs</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                <ESGMetricCard
+                  title="Carbon Tax Exposure"
+                  value={ESG_REPORT_DATA.financialCarbonKPIs.carbonTaxExposure}
+                  icon={FiDollarSign}
+                  color="red"
+                />
+                <ESGMetricCard
+                  title="Tax Allowances"
+                  value={ESG_REPORT_DATA.financialCarbonKPIs.taxAllowances}
+                  icon={FiDollarSign}
+                  color="green"
+                />
+                <ESGMetricCard
+                  title="Carbon Credits"
+                  value={ESG_REPORT_DATA.financialCarbonKPIs.carbonCredits}
+                  icon={FaLeaf}
+                  color="emerald"
+                  unit="tonnes"
+                />
+                <ESGMetricCard
+                  title="Energy Savings"
+                  value={ESG_REPORT_DATA.financialCarbonKPIs.energySavings}
+                  icon={FiZap}
+                  color="blue"
+                />
+                <ESGMetricCard
+                  title="Cost Savings Potential"
+                  value={ESG_REPORT_DATA.financialCarbonKPIs.costSavingsPotential}
+                  icon={FiDollarSign}
+                  color="amber"
+                />
+              </div>
+            </div>
+
+            {/* AI Analyst Insights */}
+            <div className="bg-white rounded-3xl shadow-lg border border-gray-200 p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-6">AI Analyst Insights</h2>
+              <div className="space-y-4">
+                {ESG_REPORT_DATA.aiAnalystInsights.map((insight, index) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="flex items-start gap-4 p-4 bg-gradient-to-r from-gray-50 to-white border border-gray-100 rounded-xl hover:border-emerald-200 transition-colors"
+                  >
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 flex items-center justify-center">
+                      <span className="text-white font-bold text-sm">{index + 1}</span>
+                    </div>
+                    <p className="text-gray-700 leading-relaxed">{insight}</p>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+
+            {/* Download Button for ESG Report */}
+            <div className="flex justify-center">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => handleDownloadESGReport("pdf")}
+                className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-6 py-3 rounded-full shadow-lg hover:shadow-xl text-sm font-semibold transition-all"
+              >
+                <FiDownload className="w-5 h-5" />
+                Download Full ESG Report (PDF)
+              </motion.button>
+            </div>
+          </div>
+        );
+
       case "invoices":
         return (
           <div className="space-y-6">
@@ -2763,15 +3694,21 @@ export default function EnvironmentalCategory() {
             </p>
           </div>
 
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleDownloadEnvReport}
-            className="group relative inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-full shadow-md text-sm font-semibold"
-          >
-            <FaFilePdf className="w-4 h-4" />
-            Download Report
-          </motion.button>
+          {/* ✅ UPDATED: Enhanced Download Button */}
+          <DownloadButton
+            totalEnergyKwh={totalEnergyKwh}
+            totalEnergy={totalEnergy}
+            totalInvoiceCo2Tonnes={totalInvoiceCo2Tonnes}
+            totalWater={totalWater}
+            totalWaste={totalWaste}
+            totalFuel={totalFuel}
+            invoiceSummaries={invoiceSummaries}
+            chartData={chartData}
+            activeTab={activeTab}
+            monthlySeries={monthlySeries}
+            onGenerateESGReport={handleDownloadESGReport}
+            onGenerateEnvironmentalReport={handleDownloadEnvironmentalReport}
+          />
         </header>
 
         <motion.div

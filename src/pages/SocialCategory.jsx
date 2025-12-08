@@ -12,12 +12,12 @@ import {
   Legend,
   ResponsiveContainer,
   AreaChart,
-  Area
+  Area,
 } from "recharts";
-import { 
-  FiActivity, 
-  FiUsers, 
-  FiBriefcase, 
+import {
+  FiActivity,
+  FiUsers,
+  FiBriefcase,
   FiGlobe,
   FiTrendingUp,
   FiTarget,
@@ -25,18 +25,22 @@ import {
   FiHeart,
   FiAward,
   FiDollarSign,
-  FiCalendar
+  FiCalendar,
 } from "react-icons/fi";
-import { 
+import {
   FaFilePdf,
   FaChartLine,
   FaHandshake,
   FaHandsHelping,
-  FaBalanceScale
+  FaBalanceScale,
 } from "react-icons/fa";
 import { jsPDF } from "jspdf";
 import { SimulationContext } from "../context/SimulationContext";
 import { API_BASE_URL } from "../config/api";
+
+// ⬇️ NEW: import logos directly from assets (update paths to match your project)
+import africaESGLogo from "../assets/AfricaESG.AI.png";
+import clientLogo from "../assets/ethekwin.png";
 
 // Fixed: Clean color palette without duplicates
 const chartTheme = {
@@ -107,9 +111,14 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 // Enhanced Progress Bar with animation
-const ProgressBar = ({ value, max = 100, color = "primary", showLabel = true }) => {
+const ProgressBar = ({
+  value,
+  max = 100,
+  color = "primary",
+  showLabel = true,
+}) => {
   const pct = Math.max(0, Math.min(100, (value / max) * 100));
-  
+
   const colorClasses = {
     primary: "from-sky-500 via-emerald-500 to-lime-500",
     success: "from-emerald-500 to-emerald-600",
@@ -136,40 +145,56 @@ const ProgressBar = ({ value, max = 100, color = "primary", showLabel = true }) 
 };
 
 // New Metric Card Component
-const MetricCard = ({ title, value, icon: Icon, color = "primary", trend, subtitle }) => {
+const MetricCard = ({
+  title,
+  value,
+  icon: Icon,
+  color = "primary",
+  trend,
+  subtitle,
+}) => {
   const colorClasses = {
     primary: "bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200",
-    success: "bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200",
-    community: "bg-gradient-to-br from-cyan-50 to-cyan-100 border-cyan-200",
-    premium: "bg-gradient-to-br from-violet-50 to-violet-100 border-violet-200",
+    success:
+      "bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200",
+    community:
+      "bg-gradient-to-br from-cyan-50 to-cyan-100 border-cyan-200",
+    premium:
+      "bg-gradient-to-br from-violet-50 to-violet-100 border-violet-200",
   };
 
   return (
-    <div className={`relative rounded-2xl border-2 p-5 ${colorClasses[color]} group hover:scale-[1.02] transition-all duration-300`}>
+    <div
+      className={`relative rounded-2xl border-2 p-5 ${
+        colorClasses[color]
+      } group hover:scale-[1.02] transition-all duration-300`}
+    >
       <div className="absolute top-4 right-4 opacity-20 group-hover:opacity-30 transition-opacity">
         <Icon className="h-8 w-8" />
       </div>
-      
+
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
             {title}
           </p>
-          <p className="text-2xl font-bold text-slate-900">
-            {value}
-          </p>
+          <p className="text-2xl font-bold text-slate-900">{value}</p>
           {subtitle && (
             <p className="text-xs text-slate-600 mt-1">{subtitle}</p>
           )}
         </div>
-        
+
         {trend && (
-          <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-            trend > 0 
-              ? "bg-emerald-100 text-emerald-700" 
-              : "bg-rose-100 text-rose-700"
-          }`}>
-            <FiTrendingUp className={`h-3 w-3 ${trend < 0 ? "transform rotate-180" : ""}`} />
+          <div
+            className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+              trend > 0
+                ? "bg-emerald-100 text-emerald-700"
+                : "bg-rose-100 text-rose-700"
+            }`}
+          >
+            <FiTrendingUp
+              className={`h-3 w-3 ${trend < 0 ? "transform rotate-180" : ""}`}
+            />
             <span>{Math.abs(trend)}%</span>
           </div>
         )}
@@ -307,52 +332,107 @@ export default function SocialCategory() {
       ? socialAiInsights
       : socialInsights || [];
 
-  // ------------ Simple PDF Download Function ------------
+  // ------------ PDF Download with logos from assets ------------
   const handleDownloadSocialReport = () => {
     const doc = new jsPDF();
-    let y = 20;
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.text("AfricaESG.AI – ESG Social Progress", 14, y);
-    y += 10;
+    // Helper to add the text body (metrics + insights)
+    const addBody = (startY = 40) => {
+      let y = startY;
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-
-    const add = (label, val) => {
-      const line = `${label}: ${val}`;
-      const lines = doc.splitTextToSize(line, 180);
-      doc.text(lines, 14, y);
-      y += lines.length * 5;
-    };
-
-    add("Supplier Diversity (%)", supplierDiversity.toFixed(1));
-    add("Employee Engagement (0–100)", employeeEngagement.toFixed(1));
-    add(
-      "Community Engagement (% of revenue – proxy)",
-      communityEngagementRevenuePct.toFixed(1)
-    );
-    add("Community Programmes Index", communityPrograms);
-
-    // Add AI insights if available
-    if (finalInsights.length > 0) {
-      y += 10;
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.text("AI Social Insights", 14, y);
+      doc.setFontSize(18);
+      doc.text("AfricaESG.AI – ESG Social Progress", 14, y);
       y += 10;
-      
+
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
-      finalInsights.forEach((insight, idx) => {
-        const lines = doc.splitTextToSize(`${idx + 1}. ${insight}`, 180);
-        doc.text(lines, 14, y);
-        y += lines.length * 5 + 2;
-      });
-    }
 
-    doc.save("AfricaESG_Social_Report.pdf");
+      const addLine = (label, val) => {
+        const line = `${label}: ${val}`;
+        const lines = doc.splitTextToSize(line, 180);
+        doc.text(lines, 14, y);
+        y += lines.length * 5;
+      };
+
+      addLine("Supplier Diversity (%)", supplierDiversity.toFixed(1));
+      addLine(
+        "Employee Engagement (0–100)",
+        employeeEngagement.toFixed(1)
+      );
+      addLine(
+        "Community Engagement (% of revenue – proxy)",
+        communityEngagementRevenuePct.toFixed(1)
+      );
+      addLine("Community Programmes Index", communityPrograms);
+
+      if (finalInsights.length > 0) {
+        y += 10;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12);
+        doc.text("AI Social Insights", 14, y);
+        y += 10;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        finalInsights.forEach((insight, idx) => {
+          const lines = doc.splitTextToSize(
+            `${idx + 1}. ${insight}`,
+            180
+          );
+          doc.text(lines, 14, y);
+          y += lines.length * 5 + 2;
+        });
+      }
+    };
+
+    // If we have logos in assets, draw them first, then body
+    const drawWithLogos = () => {
+      let logosLoaded = 0;
+      const totalLogos = 2; // africaESGLogo + clientLogo (you can set to 1 if you only use one)
+
+      const onAllLoaded = () => {
+        // Body starts lower because header has logos
+        addBody(40);
+        doc.save("AfricaESG_Social_Report.pdf");
+      };
+
+      const logoPositions = [
+        { src: africaESGLogo, x: 14, y: 10, w: 35, h: 12 },
+        { src: clientLogo, x: 160, y: 10, w: 30, h: 10 },
+      ];
+
+      logoPositions.forEach((logo) => {
+        if (!logo.src) {
+          // If a logo path is missing, count it as loaded and continue
+          logosLoaded += 1;
+          if (logosLoaded === totalLogos) onAllLoaded();
+          return;
+        }
+
+        const img = new Image();
+        img.src = logo.src;
+        img.onload = () => {
+          doc.addImage(img, "PNG", logo.x, logo.y, logo.w, logo.h);
+          logosLoaded += 1;
+          if (logosLoaded === totalLogos) onAllLoaded();
+        };
+        img.onerror = () => {
+          // Skip failed logo, still continue
+          logosLoaded += 1;
+          if (logosLoaded === totalLogos) onAllLoaded();
+        };
+      });
+    };
+
+    try {
+      // Try with logos from assets
+      drawWithLogos();
+    } catch (e) {
+      // Fallback: text-only report
+      addBody(20);
+      doc.save("AfricaESG_Social_Report.pdf");
+    }
   };
 
   const renderNoData = (title) => (
@@ -377,7 +457,7 @@ export default function SocialCategory() {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
             {/* Left: Main content */}
             <div className="xl:col-span-2 space-y-8">
-              {/* Header Card - Reverted to original style */}
+              {/* Header Card */}
               <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
                 <p className="text-xs font-semibold text-sky-700 uppercase tracking-[0.18em]">
                   Social
@@ -400,8 +480,12 @@ export default function SocialCategory() {
                       <FiBriefcase className="h-4 w-4 text-blue-600" />
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-slate-600 uppercase">Supplier Diversity</p>
-                      <p className="text-2xl font-bold text-slate-900">{supplierDiversity.toFixed(1)}%</p>
+                      <p className="text-xs font-semibold text-slate-600 uppercase">
+                        Supplier Diversity
+                      </p>
+                      <p className="text-2xl font-bold text-slate-900">
+                        {supplierDiversity.toFixed(1)}%
+                      </p>
                       <p className="text-xs text-slate-500">of total spend</p>
                     </div>
                   </div>
@@ -414,8 +498,12 @@ export default function SocialCategory() {
                       <FiUsers className="h-4 w-4 text-emerald-600" />
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-slate-600 uppercase">Employee Engagement</p>
-                      <p className="text-2xl font-bold text-slate-900">{employeeEngagement.toFixed(1)}/100</p>
+                      <p className="text-xs font-semibold text-slate-600 uppercase">
+                        Employee Engagement
+                      </p>
+                      <p className="text-2xl font-bold text-slate-900">
+                        {employeeEngagement.toFixed(1)}/100
+                      </p>
                       <p className="text-xs text-slate-500">index score</p>
                     </div>
                   </div>
@@ -428,16 +516,23 @@ export default function SocialCategory() {
                       <FiGlobe className="h-4 w-4 text-cyan-600" />
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-slate-600 uppercase">Community Impact</p>
-                      <p className="text-2xl font-bold text-slate-900">{communityEngagementRevenuePct.toFixed(1)}%</p>
+                      <p className="text-xs font-semibold text-slate-600 uppercase">
+                        Community Impact
+                      </p>
+                      <p className="text-2xl font-bold text-slate-900">
+                        {communityEngagementRevenuePct.toFixed(1)}%
+                      </p>
                       <p className="text-xs text-slate-500">of revenue</p>
                     </div>
                   </div>
-                  <ProgressBar value={communityEngagementRevenuePct * 10} color="community" />
+                  <ProgressBar
+                    value={communityEngagementRevenuePct * 10}
+                    color="community"
+                  />
                 </div>
               </div>
 
-              {/* Detailed Cards Grid - Reverted to original style */}
+              {/* Detailed Cards Grid */}
               <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-white rounded-3xl border border-slate-200 p-5">
                   <h3 className="text-sm font-semibold text-sky-800 mb-2">
@@ -535,12 +630,14 @@ export default function SocialCategory() {
                       {communityEngagementRevenuePct.toFixed(1)}% revenue
                     </span>
                   </p>
-                  <ProgressBar value={communityEngagementRevenuePct * 10} />
+                  <ProgressBar
+                    value={communityEngagementRevenuePct * 10}
+                  />
                 </div>
               </section>
             </div>
 
-            {/* Right: AI Insights Panel - FIXED: Container with proper height management */}
+            {/* Right: AI Insights Panel */}
             <aside className="bg-white rounded-3xl shadow border border-slate-200 p-5 flex flex-col h-full">
               <h2 className="text-lg font-semibold text-slate-900">
                 ESG Social – AI Narrative
@@ -550,7 +647,7 @@ export default function SocialCategory() {
                 mirroring the narrative style of listed-company ESG reports.
               </p>
 
-              <div className="flex-1 min-h-0"> {/* Changed: min-h-0 for proper flex child sizing */}
+              <div className="flex-1 min-h-0">
                 {finalLoading && (
                   <p className="text-xs text-sky-700">Loading insights…</p>
                 )}
@@ -560,10 +657,13 @@ export default function SocialCategory() {
                 )}
 
                 {!finalLoading && !finalError && (
-                  <div className="h-full overflow-hidden"> {/* Added: Container with fixed height management */}
-                    <ul className="h-full overflow-y-auto pr-2 space-y-2"> {/* Changed: Added height and overflow control */}
+                  <div className="h-full overflow-hidden">
+                    <ul className="h-full overflow-y-auto pr-2 space-y-2">
                       {(finalInsights || []).map((line, idx) => (
-                        <li key={idx} className="text-sm text-slate-700 leading-relaxed">
+                        <li
+                          key={idx}
+                          className="text-sm text-slate-700 leading-relaxed"
+                        >
                           {line}
                         </li>
                       ))}
@@ -592,7 +692,7 @@ export default function SocialCategory() {
             </section>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-              {/* left: "battery supply chain" style text */}
+              {/* left */}
               <div className="xl:col-span-2 bg-white rounded-3xl border border-slate-200 p-6 space-y-4">
                 <h3 className="text-lg font-semibold text-slate-900">
                   Supply Chain Due Diligence Journey
@@ -649,7 +749,7 @@ export default function SocialCategory() {
                 </div>
               </div>
 
-              {/* right: audit chart & donut like slide 28 */}
+              {/* right: charts */}
               <div className="space-y-4">
                 <div className="bg-white rounded-3xl border border-slate-200 p-4">
                   <h4 className="text-xs font-semibold text-sky-800 uppercase mb-2">
@@ -663,8 +763,16 @@ export default function SocialCategory() {
                         <YAxis />
                         <Tooltip content={<CustomTooltip />} />
                         <Legend />
-                        <Bar dataKey="initial" name="Initial Audit" fill="#1d4ed8" />
-                        <Bar dataKey="final" name="Final Audit" fill="#60a5fa" />
+                        <Bar
+                          dataKey="initial"
+                          name="Initial Audit"
+                          fill="#1d4ed8"
+                        />
+                        <Bar
+                          dataKey="final"
+                          name="Final Audit"
+                          fill="#60a5fa"
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -689,7 +797,9 @@ export default function SocialCategory() {
                             <Cell
                               key={entry.name}
                               fill={
-                                COMMUNITY_COLORS[index % COMMUNITY_COLORS.length]
+                                COMMUNITY_COLORS[
+                                  index % COMMUNITY_COLORS.length
+                                ]
                               }
                             />
                           ))}
@@ -733,10 +843,18 @@ export default function SocialCategory() {
                     chain.
                   </p>
                   <ul className="mt-3 list-disc list-inside text-xs text-slate-600 space-y-1">
-                    <li>Protect and respect human rights in all activities.</li>
-                    <li>Promote health, safety and wellbeing of workers.</li>
-                    <li>Foster inclusion and fair treatment for everyone.</li>
-                    <li>Support a just transition in affected communities.</li>
+                    <li>
+                      Protect and respect human rights in all activities.
+                    </li>
+                    <li>
+                      Promote health, safety and wellbeing of workers.
+                    </li>
+                    <li>
+                      Foster inclusion and fair treatment for everyone.
+                    </li>
+                    <li>
+                      Support a just transition in affected communities.
+                    </li>
                     <li>
                       Partner with communities and stakeholders on shared
                       priorities.
@@ -773,15 +891,20 @@ export default function SocialCategory() {
                     risks, and link them to your metrics and action plans.
                   </p>
                   <ul className="mt-3 list-disc list-inside text-xs text-slate-600 space-y-1">
-                    <li>Identify high-risk issues across operations and value chain.</li>
-                    <li>Prioritise topics with the greatest potential impact.</li>
+                    <li>
+                      Identify high-risk issues across operations and value
+                      chain.
+                    </li>
+                    <li>
+                      Prioritise topics with the greatest potential impact.
+                    </li>
                     <li>Validate with stakeholders and experts.</li>
                     <li>Report annually on progress and outcomes.</li>
                   </ul>
                 </div>
               </div>
 
-              {/* Right: numeric + engagement index (re-using bar chart) */}
+              {/* Right: numeric + engagement index */}
               <div className="space-y-4">
                 <div className="bg-white rounded-3xl border border-emerald-100 p-5">
                   <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wide mb-1">
@@ -820,7 +943,9 @@ export default function SocialCategory() {
                               <Cell
                                 key={index}
                                 fill={
-                                  ENGAGED_COLORS[index % ENGAGED_COLORS.length]
+                                  ENGAGED_COLORS[
+                                    index % ENGAGED_COLORS.length
+                                  ]
                                 }
                               />
                             ))}
@@ -854,7 +979,7 @@ export default function SocialCategory() {
             </section>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-              {/* left: community engagement card like "Building Together" */}
+              {/* left: community engagement */}
               <div className="xl:col-span-2 space-y-4">
                 <div className="bg-white rounded-3xl border border-slate-200 p-6">
                   <h3 className="text-lg font-semibold text-slate-900">
@@ -917,7 +1042,9 @@ export default function SocialCategory() {
                   </p>
                   <ul className="mt-3 list-disc list-inside text-xs text-slate-600 space-y-1">
                     <li>Identify projects that may affect Indigenous lands.</li>
-                    <li>Engage early and seek free, prior and informed consent.</li>
+                    <li>
+                      Engage early and seek free, prior and informed consent.
+                    </li>
                     <li>
                       Build long-term relationships through co-created
                       programmes and benefit sharing.
@@ -926,7 +1053,7 @@ export default function SocialCategory() {
                 </div>
               </div>
 
-              {/* right: investment mix + proxy surveys - FIXED: Reverted to original background color */}
+              {/* right: investment mix + proxies */}
               <div className="space-y-4">
                 <div className="bg-white rounded-3xl border border-slate-200 p-5">
                   <h4 className="text-xs font-semibold text-sky-800 uppercase mb-2">
@@ -1016,19 +1143,19 @@ export default function SocialCategory() {
             </p>
           </div>
 
-          {/* Download Button - matches Dashboard's Download ESG Report */}
+          {/* Download Button */}
           <div className="flex items-center gap-3">
             <button
               onClick={handleDownloadSocialReport}
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-full shadow flex items-center gap-2 text-sm font-semibold transition-colors duration-200"
             >
-              <svg 
-                stroke="currentColor" 
-                fill="currentColor" 
-                strokeWidth="0" 
-                viewBox="0 0 384 512" 
-                height="1em" 
-                width="1em" 
+              <svg
+                stroke="currentColor"
+                fill="currentColor"
+                strokeWidth="0"
+                viewBox="0 0 384 512"
+                height="1em"
+                width="1em"
                 xmlns="http://www.w3.org/2000/svg"
               >
                 <path d="M181.9 256.1c-5-16-4.9-46.9-2-46.9 8.4 0 7.6 36.9 2 46.9zm-1.7 47.2c-7.7 20.2-17.3 43.3-28.4 62.7 18.3-7 39-17.2 62.9-21.9-12.7-9.6-24.9-23.4-34.5-40.8zM86.1 428.1c0 .8 13.2-5.4 34.9-40.2-6.7 6.3-29.1 24.5-34.9 40.2zM248 160h136v328c0 13.3-10.7 24-24 24H24c-13.3 0-24-10.7-24-24V24C0 10.7 10.7 0 24 0h200v136c0 13.2 10.8 24 24 24zm-8 171.8c-20-12.2-33.3-29-42.7-53.8 4.5-18.5 11.6-46.6 6.2-64.2-4.7-29.4-42.4-26.5-47.8-6.8-5 18.3-.4 44.1 8.1 77-11.6 27.6-28.7 64.6-40.8 85.8-.1 0-.1.1-.2.1-27.1 13.9-73.6 44.5-54.5 68 5.6 6.9 16 10 21.5 10 17.9 0 35.7-18 61.1-61.8 25.8-8.5 54.1-19.1 79-23.2 21.7 11.8 47.1 19.5 64 19.5 29.2 0 31.2-32 19.7-43.4-13.9-13.6-54.3-9.7-73.6-7.2zM377 105L279 7c-4.5-4.5-10.6-7-17-7h-6v128h128v-6.1c0-6.3-2.5-12.4-7-16.9zm-74.1 255.3c4.1-2.7-2.5-11.9-42.8-9 37.1 15.8 42.8 9 42.8 9z"></path>
@@ -1038,7 +1165,7 @@ export default function SocialCategory() {
           </div>
         </header>
 
-        {/* TABS – navigation unchanged */}
+        {/* TABS */}
         <div className="bg-white/80 backdrop-blur rounded-full border border-sky-100 shadow-sm inline-flex p-1 gap-1">
           {TABS.map((tab) => {
             const Icon = TAB_ICONS[tab];
@@ -1064,7 +1191,7 @@ export default function SocialCategory() {
         {/* MAIN CONTENT */}
         {renderTabContent()}
 
-        {/* FOOTER - FIXED: Removed extra items */}
+        {/* FOOTER */}
         <footer className="mt-8 pt-6 border-t border-slate-200 text-center">
           <div className="text-sm text-slate-600">
             <p>Powered by AfricaESG.AI</p>
