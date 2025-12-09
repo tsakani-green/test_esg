@@ -1085,7 +1085,85 @@ export default function EnvironmentalCategory() {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
 
-  const metrics = environmentalMetrics || {};
+  // ✅ NEW: Local storage key for environmental data
+  const ENVIRONMENTAL_DATA_KEY = "environmentalData";
+
+  // ✅ NEW: Local storage for environmental data
+  const [localEnvironmentalData, setLocalEnvironmentalData] = useState({
+    uploadedRows: [],
+    metrics: {},
+    insights: []
+  });
+
+  // ✅ NEW: Load data from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedData = localStorage.getItem(ENVIRONMENTAL_DATA_KEY);
+      if (savedData) {
+        const parsedData = JSON.parse(savedData);
+        setLocalEnvironmentalData(parsedData);
+        console.log("Loaded environmental data from localStorage:", parsedData);
+      }
+    } catch (e) {
+      console.warn("Failed to parse environmental data from localStorage", e);
+    }
+  }, []);
+
+  // ✅ NEW: Save data to localStorage whenever new data arrives
+  const saveEnvironmentalData = (data) => {
+    try {
+      const dataToSave = {
+        uploadedRows: data.uploadedRows || data.rows || data.data || [],
+        metrics: {
+          energyUsage: data.energyUsage || [],
+          co2Emissions: data.co2Emissions || [],
+          waste: data.waste || [],
+          fuelUsage: data.fuelUsage || [],
+          waterUsage: data.waterUsage || [],
+          ...data
+        },
+        insights: data.insights || environmentalInsights || [],
+        timestamp: new Date().toISOString()
+      };
+      
+      localStorage.setItem(ENVIRONMENTAL_DATA_KEY, JSON.stringify(dataToSave));
+      setLocalEnvironmentalData(dataToSave);
+      console.log("Saved environmental data to localStorage:", dataToSave);
+    } catch (e) {
+      console.warn("Failed to save environmental data to localStorage", e);
+    }
+  };
+
+  // ✅ MODIFIED: Save context data when it loads
+  useEffect(() => {
+    if (environmentalMetrics || environmentalInsights) {
+      const data = {
+        ...environmentalMetrics,
+        insights: environmentalInsights || []
+      };
+      saveEnvironmentalData(data);
+    }
+  }, [environmentalMetrics, environmentalInsights]);
+
+  // ✅ MODIFIED: Use local data as primary source, fallback to context
+  const getCurrentMetrics = () => {
+    // Always use the latest local data if it exists
+    if (localEnvironmentalData.uploadedRows && localEnvironmentalData.uploadedRows.length > 0) {
+      return {
+        ...localEnvironmentalData.metrics,
+        uploadedRows: localEnvironmentalData.uploadedRows,
+        insights: localEnvironmentalData.insights
+      };
+    }
+    
+    // Fallback to context data
+    return {
+      ...(environmentalMetrics || {}),
+      insights: environmentalInsights || []
+    };
+  };
+
+  const currentMetrics = getCurrentMetrics();
 
   const [invoiceSummaries, setInvoiceSummaries] = useState([]);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
@@ -1096,8 +1174,8 @@ export default function EnvironmentalCategory() {
   const [invoiceAiLoading, setInvoiceAiLoading] = useState(false);
   const [invoiceAiError, setInvoiceAiError] = useState(null);
 
-  const uploadedRows =
-    metrics.uploadedRows || metrics.rows || metrics.data || [];
+  // ✅ MODIFIED: Use currentMetrics which includes local data
+  const uploadedRows = currentMetrics.uploadedRows || [];
 
   const monthlySeries = useMemo(() => {
     if (!Array.isArray(uploadedRows) || uploadedRows.length === 0) return [];
@@ -1173,31 +1251,32 @@ export default function EnvironmentalCategory() {
     return arr.slice(-6);
   }, [uploadedRows]);
 
+  // ✅ MODIFIED: Use currentMetrics
   const energyUsage =
-    (metrics.energyUsage && metrics.energyUsage.length
-      ? metrics.energyUsage
+    (currentMetrics.energyUsage && currentMetrics.energyUsage.length
+      ? currentMetrics.energyUsage
       : monthlySeries.map((m) => m.energy)) || [];
 
   const co2Emissions =
     monthlySeries.length > 0
       ? monthlySeries.map((m) => m.carbon)
-      : metrics.co2Emissions && metrics.co2Emissions.length
-      ? metrics.co2Emissions
+      : currentMetrics.co2Emissions && currentMetrics.co2Emissions.length
+      ? currentMetrics.co2Emissions
       : [];
 
   const waste =
-    (metrics.waste && metrics.waste.length
-      ? metrics.waste
+    (currentMetrics.waste && currentMetrics.waste.length
+      ? currentMetrics.waste
       : monthlySeries.map((m) => m.waste)) || [];
 
   const fuelUsage =
-    (metrics.fuelUsage && metrics.fuelUsage.length
-      ? metrics.fuelUsage
+    (currentMetrics.fuelUsage && currentMetrics.fuelUsage.length
+      ? currentMetrics.fuelUsage
       : monthlySeries.map((m) => m.fuel)) || [];
 
   const waterUsage =
-    (metrics.waterUsage && metrics.waterUsage.length
-      ? metrics.waterUsage
+    (currentMetrics.waterUsage && currentMetrics.waterUsage.length
+      ? currentMetrics.waterUsage
       : monthlySeries.map((m) => m.water)) || [];
 
   const hasAnyData = useMemo(() => {
@@ -1230,6 +1309,7 @@ export default function EnvironmentalCategory() {
       : 0;
   const totalWaste = waste.reduce((s, v) => s + (v || 0), 0);
 
+  // ✅ MODIFIED: Save invoice summaries locally too
   const persistInvoiceSummaries = (arr) => {
     try {
       localStorage.setItem("invoiceSummaries", JSON.stringify(arr));
@@ -1279,6 +1359,15 @@ export default function EnvironmentalCategory() {
 
       setUploadSuccessCount(processedCount);
       setInvoiceError(null);
+      
+      // ✅ NEW: Also extract and save environmental data from invoices
+      if (summaries.length > 0) {
+        const extractedData = extractEnvironmentalDataFromInvoices(summaries);
+        if (extractedData) {
+          saveEnvironmentalData(extractedData);
+        }
+      }
+      
     } catch (err) {
       console.error("Invoice upload error:", err);
       setInvoiceError(
@@ -1288,6 +1377,61 @@ export default function EnvironmentalCategory() {
       setUploadSuccessCount(0);
     } finally {
       setInvoiceLoading(false);
+    }
+  };
+
+  // ✅ NEW: Helper to extract environmental data from invoices
+  const extractEnvironmentalDataFromInvoices = (summaries) => {
+    if (!summaries || summaries.length === 0) return null;
+    
+    try {
+      const monthlyData = {};
+      
+      summaries.forEach((inv) => {
+        const history = Array.isArray(inv.sixMonthHistory) ? inv.sixMonthHistory : [];
+        
+        history.forEach((month) => {
+          const monthLabel = month.month_label || month.month || "Unknown";
+          if (!monthlyData[monthLabel]) {
+            monthlyData[monthLabel] = {
+              energy: 0,
+              carbon: 0,
+              waste: 0,
+              fuel: 0,
+              water: 0
+            };
+          }
+          
+          const energy = Number(month.energyKWh ?? month.energy_kwh ?? 0) || 0;
+          const carbon = energy * EF_ELECTRICITY_T_PER_KWH;
+          
+          monthlyData[monthLabel].energy += energy;
+          monthlyData[monthLabel].carbon += carbon;
+          // Note: invoices may not contain waste/fuel/water data
+        });
+      });
+      
+      // Convert to array format
+      const uploadedRows = Object.entries(monthlyData).map(([month, data]) => ({
+        month,
+        energy_kwh: data.energy,
+        co2_tonnes: data.carbon,
+        waste_tonnes: 0,
+        fuel_litres: 0,
+        water_m3: 0
+      }));
+      
+      return {
+        uploadedRows,
+        energyUsage: uploadedRows.map(row => row.energy_kwh),
+        co2Emissions: uploadedRows.map(row => row.co2_tonnes),
+        waste: uploadedRows.map(() => 0),
+        fuelUsage: uploadedRows.map(() => 0),
+        waterUsage: uploadedRows.map(() => 0)
+      };
+    } catch (e) {
+      console.warn("Failed to extract environmental data from invoices", e);
+      return null;
     }
   };
 
@@ -1603,15 +1747,21 @@ export default function EnvironmentalCategory() {
           ? row.carbon
           : energyVal * EF_ELECTRICITY_T_PER_KWH;
 
-      const energyIntensity = energyVal / 1000;
-      const carbonIntensity =
-        energyVal > 0 ? carbonVal / energyVal : 0;
+      // ✅ ENHANCED: Calculate Energy Intensity
+      // Energy Intensity = Energy Consumption / Production Output
+      // For now, using a default production output of 1000 units
+      // You can modify this based on your actual production data
+      const productionOutput = 1000; // Default base value
+      const energyIntensity = energyVal > 0 ? energyVal / productionOutput : 0;
+      
+      // ✅ ENHANCED: Calculate Carbon Intensity
+      const carbonIntensity = energyVal > 0 ? carbonVal / energyVal : 0;
 
       return {
         name: row.name,
         energy: energyVal,
-        energyIntensity,
-        carbonIntensity,
+        energyIntensity: parseFloat(energyIntensity.toFixed(4)),
+        carbonIntensity: parseFloat(carbonIntensity.toFixed(6)),
       };
     });
   }, [chartData]);
@@ -2678,18 +2828,18 @@ export default function EnvironmentalCategory() {
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h2 className="text-xl font-bold text-gray-900">
-                    Carbon Emissions Trend
+                    Energy vs Carbon Intensity
                   </h2>
                   <p className="text-sm text-gray-600 mt-1">
-                    Carbon emissions over time based on uploaded data
+                    Energy consumption vs calculated carbon intensity (tCO₂e/kWh)
                   </p>
                 </div>
               </div>
 
-              {carbonChartData.length ? (
+              {energyTabData.length ? (
                 <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={carbonChartData}>
+                    <LineChart data={energyTabData}>
                       <CartesianGrid
                         strokeDasharray="3 3"
                         stroke={chartTheme.grid}
@@ -2705,6 +2855,7 @@ export default function EnvironmentalCategory() {
                         tick={{ fontSize: 12, fill: chartTheme.tick }}
                       />
                       <YAxis
+                        yAxisId="left"
                         tickLine={false}
                         axisLine={{
                           stroke: chartTheme.axis,
@@ -2712,22 +2863,41 @@ export default function EnvironmentalCategory() {
                         }}
                         tick={{ fontSize: 12, fill: chartTheme.tick }}
                       />
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fontSize: 12, fill: chartTheme.tick }}
+                      />
                       <Tooltip content={<CustomTooltip />} />
                       <Legend />
                       <Line
+                        yAxisId="left"
                         type="monotone"
-                        dataKey="carbon"
-                        name="Carbon (tCO₂e)"
+                        dataKey="energy"
+                        name="Energy (kWh)"
+                        stroke={chartTheme.energy}
+                        strokeWidth={3}
+                        dot={{ r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                      <Line
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey="carbonIntensity"
+                        name="Carbon Intensity (tCO₂e/kWh)"
                         stroke={chartTheme.carbon}
                         strokeWidth={3}
                         dot={{ r: 4 }}
                         activeDot={{ r: 6 }}
+                        strokeDasharray="4 2"
                       />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
               ) : (
-                renderNoData("carbon")
+                renderNoData("carbon intensity")
               )}
             </div>
           </div>
@@ -3390,13 +3560,13 @@ export default function EnvironmentalCategory() {
                     </p>
                   </div>
                 ) : hasInvoiceInsights ||
-                  (environmentalInsights &&
-                    environmentalInsights.length > 0) ? (
+                  (currentMetrics.insights &&
+                    currentMetrics.insights.length > 0) ? (
                   <div className="h-full overflow-hidden">
                     <ul className="h-full overflow-y-auto pr-2 space-y-3">
                       {(hasInvoiceInsights
                         ? invoiceAiInsights
-                        : environmentalInsights || []
+                        : currentMetrics.insights || []
                       )
                         .slice(0, 8)
                         .map((insight, idx) => (
