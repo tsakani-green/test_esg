@@ -1,17 +1,47 @@
+// src/pages/Login.jsx
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import logo from "../assets/AfricaESG.AI.png";
+import api from "../config/api"; // ✅ use the shared API helper
 
 export default function Login({ onLogin }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("tsakani@greenbdgafrica.com");
+  const [password, setPassword] = useState("ChangeMe123!");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (username === "admin" && password === "password123") {
-      onLogin(username);
-    } else {
-      setError("Invalid username or password");
+    setError("");
+    setLoading(true);
+
+    try {
+      // ✅ use api.login (POST /auth/login on http://127.0.0.1:3001)
+      const data = await api.login({ email, password });
+
+      // Expected FastAPI response: { access_token, token_type, user }
+      if (!data?.access_token) {
+        throw new Error("Login response missing access token");
+      }
+
+      // Save token + user to localStorage
+      localStorage.setItem("token", data.access_token);
+      if (data.user) {
+        localStorage.setItem("user", JSON.stringify(data.user));
+      }
+
+      // optional callback for parent
+      if (onLogin) {
+        onLogin(data.user || null);
+      }
+
+      // Redirect to main ESG page
+      navigate("/environment/energy"); // change if your main route is different
+    } catch (err) {
+      setError(err.message || "Login failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -32,13 +62,13 @@ export default function Login({ onLogin }) {
         <form onSubmit={handleLogin} className="space-y-5">
           <div>
             <label className="block text-gray-700 font-medium text-sm sm:text-base mb-1">
-              Username
+              Email
             </label>
             <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter your username"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter your email"
               required
               className="w-full px-3 py-2 sm:py-3 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-700 text-gray-800 text-sm sm:text-base placeholder-gray-400"
             />
@@ -62,9 +92,10 @@ export default function Login({ onLogin }) {
 
           <button
             type="submit"
-            className="w-full py-2 sm:py-3 bg-green-700 hover:bg-green-800 text-white font-semibold rounded-md text-sm sm:text-base transition duration-200 shadow-md hover:shadow-lg"
+            disabled={loading}
+            className="w-full py-2 sm:py-3 bg-green-700 hover:bg-green-800 text-white font-semibold rounded-md text-sm sm:text-base transition duration-200 shadow-md hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Log In
+            {loading ? "Logging in..." : "Log In"}
           </button>
         </form>
 

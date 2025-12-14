@@ -1,3 +1,4 @@
+// src/pages/SocialCategory.jsx
 import React, { useContext, useMemo, useState, useEffect } from "react";
 import {
   PieChart,
@@ -11,8 +12,6 @@ import {
   CartesianGrid,
   Legend,
   ResponsiveContainer,
-  AreaChart,
-  Area,
 } from "recharts";
 import {
   FiActivity,
@@ -20,38 +19,24 @@ import {
   FiBriefcase,
   FiGlobe,
   FiTrendingUp,
-  FiTarget,
-  FiShield,
-  FiHeart,
-  FiAward,
-  FiDollarSign,
-  FiCalendar,
 } from "react-icons/fi";
-import {
-  FaFilePdf,
-  FaChartLine,
-  FaHandshake,
-  FaHandsHelping,
-  FaBalanceScale,
-} from "react-icons/fa";
 import { jsPDF } from "jspdf";
 import { SimulationContext } from "../context/SimulationContext";
 import { API_BASE_URL } from "../config/api";
 
-// ⬇️ NEW: import logos directly from assets (update paths to match your project)
+// import logos directly from assets (ensure these paths exist)
 import africaESGLogo from "../assets/AfricaESG.AI.png";
 import clientLogo from "../assets/ethekwin.png";
 
-// Fixed: Clean color palette without duplicates
+// Clean color palette
 const chartTheme = {
-  // Primary theme colors
   grid: "#e5e7eb",
   axis: "#9ca3af",
   tick: "#6b7280",
   supplierPrimary: "#2563eb",
   supplierOther: "#e5e7eb",
   engaged: "#22c55e",
-  neutral: "#e5e7eb", // Only one neutral key
+  neutral: "#e5e7eb",
   csi: "#0ea5e9",
   stakeholder: "#6366f1",
   supplierDev: "#f97316",
@@ -73,7 +58,7 @@ const TAB_ICONS = {
   Community: FiGlobe,
 };
 
-// Enhanced Custom Tooltip with glass morphism
+// Tooltip
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload || payload.length === 0) return null;
 
@@ -110,7 +95,7 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-// Enhanced Progress Bar with animation
+// Progress Bar
 const ProgressBar = ({
   value,
   max = 100,
@@ -144,7 +129,7 @@ const ProgressBar = ({
   );
 };
 
-// New Metric Card Component
+// Metric Card (kept if you want later)
 const MetricCard = ({
   title,
   value,
@@ -165,9 +150,7 @@ const MetricCard = ({
 
   return (
     <div
-      className={`relative rounded-2xl border-2 p-5 ${
-        colorClasses[color]
-      } group hover:scale-[1.02] transition-all duration-300`}
+      className={`relative rounded-2xl border-2 p-5 ${colorClasses[color]} group hover:scale-[1.02] transition-all duration-300`}
     >
       <div className="absolute top-4 right-4 opacity-20 group-hover:opacity-30 transition-opacity">
         <Icon className="h-8 w-8" />
@@ -179,12 +162,10 @@ const MetricCard = ({
             {title}
           </p>
           <p className="text-2xl font-bold text-slate-900">{value}</p>
-          {subtitle && (
-            <p className="text-xs text-slate-600 mt-1">{subtitle}</p>
-          )}
+          {subtitle && <p className="text-xs text-slate-600 mt-1">{subtitle}</p>}
         </div>
 
-        {trend && (
+        {typeof trend === "number" && (
           <div
             className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
               trend > 0
@@ -203,22 +184,59 @@ const MetricCard = ({
   );
 };
 
+const LiveBadge = ({ live, timestamp }) => (
+  <span
+    className={`inline-flex items-center gap-2 text-[11px] px-3 py-1 rounded-full font-semibold border ${
+      live
+        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+        : "bg-slate-50 text-slate-600 border-slate-200"
+    }`}
+    title={timestamp || ""}
+  >
+    <span
+      className={`h-2 w-2 rounded-full ${live ? "bg-emerald-500" : "bg-slate-400"}`}
+    />
+    {live ? "LIVE AI" : "Fallback"}
+    {timestamp ? <span className="text-slate-500">• {timestamp}</span> : null}
+  </span>
+);
+
 export default function SocialCategory() {
-  const { socialMetrics, socialInsights, loading, error } =
-    useContext(SimulationContext);
+  // SimulationContext exposes socialMetrics + insights (combined)
+  const { socialMetrics, insights, loading, error } = useContext(SimulationContext);
 
   const [activeTab, setActiveTab] = useState("Overview");
-  const [isHovered, setIsHovered] = useState({});
 
-  const metrics = socialMetrics || {};
-  const supplierDiversity = metrics.supplierDiversity ?? 0;
-  const employeeEngagement = metrics.employeeEngagement ?? 0;
-  const communityPrograms = metrics.communityPrograms ?? 0;
+  // --- LIVE AI STATE ---
+  const [socialAiInsights, setSocialAiInsights] = useState([]);
+  const [socialAiLoading, setSocialAiLoading] = useState(false);
+  const [socialAiError, setSocialAiError] = useState(null);
+  const [socialAiMeta, setSocialAiMeta] = useState({ live: false, timestamp: null });
+
+  // helper to ensure numeric metrics (prevents .toFixed crashes)
+  const parseMetric = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  // CLEAN numeric metrics payload for backend AI
+  const cleanSocialMetrics = useMemo(() => {
+    const m = socialMetrics || {};
+    return {
+      supplierDiversity: parseMetric(m.supplierDiversity),
+      employeeEngagement: parseMetric(m.employeeEngagement),
+      communityPrograms: parseMetric(m.communityPrograms),
+    };
+  }, [socialMetrics]);
+
+  const metrics = cleanSocialMetrics;
+
+  const supplierDiversity = metrics.supplierDiversity;
+  const employeeEngagement = metrics.employeeEngagement;
+  const communityPrograms = metrics.communityPrograms;
 
   const hasAnyData =
-    supplierDiversity !== 0 ||
-    employeeEngagement !== 0 ||
-    communityPrograms !== 0;
+    supplierDiversity !== 0 || employeeEngagement !== 0 || communityPrograms !== 0;
 
   // --- derived data for charts / badges ---
   const supplierData = useMemo(
@@ -232,10 +250,7 @@ export default function SocialCategory() {
   const humanCapitalData = useMemo(
     () => [
       { group: "Engaged", value: employeeEngagement },
-      {
-        group: "At-risk / Neutral",
-        value: Math.max(0, 100 - employeeEngagement),
-      },
+      { group: "At-risk / Neutral", value: Math.max(0, 100 - employeeEngagement) },
     ],
     [employeeEngagement]
   );
@@ -268,7 +283,7 @@ export default function SocialCategory() {
     [supplierDiversity, employeeEngagement]
   );
 
-  // --- static sample data for "audit chart" style view ---
+  // --- static sample audit data ---
   const auditScoreData = [
     { year: "2022", initial: 100, final: 165 },
     { year: "2023", initial: 80, final: 145 },
@@ -283,70 +298,90 @@ export default function SocialCategory() {
     { name: "Ethics", value: 10 },
   ];
 
-  // ------------ AI Social Insights ------------
-  const [socialAiInsights, setSocialAiInsights] = useState([]);
-  const [socialAiLoading, setSocialAiLoading] = useState(false);
-  const [socialAiError, setSocialAiError] = useState(null);
+  // ------------ LIVE AI Social Insights ------------
+  const metricsKey = useMemo(() => JSON.stringify(metrics), [metrics]);
 
   useEffect(() => {
+    // If there is literally no data, still allow call (your backend can still respond),
+    // but skip if metrics object is empty.
     if (!metrics || Object.keys(metrics).length === 0) return;
+
+    const controller = new AbortController();
 
     const loadSocialAI = async () => {
       try {
         setSocialAiLoading(true);
         setSocialAiError(null);
 
-        const res = await fetch(`${API_BASE_URL}/api/social-insights`, {
+        const response = await fetch(`${API_BASE_URL}/api/social-insights`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ metrics }),
+          signal: controller.signal,
         });
 
-        if (!res.ok) {
-          const txt = await res.text();
-          throw new Error(`/api/social-insights error: ${res.status} ${txt}`);
+        if (!response.ok) {
+          const txt = await response.text();
+          throw new Error(`/api/social-insights error: ${response.status} ${txt}`);
         }
 
-        const data = await res.json();
-        const insights = Array.isArray(data)
-          ? data
-          : Array.isArray(data.insights)
-          ? data.insights
-          : [];
-
-        setSocialAiInsights(insights);
+        const data = await response.json();
+        const ai = Array.isArray(data?.insights) ? data.insights : [];
+        setSocialAiInsights(ai);
+        setSocialAiMeta({
+          live: !!data?.live,
+          timestamp: data?.timestamp || null,
+        });
       } catch (err) {
-        setSocialAiError(err.message);
+        if (err.name === "AbortError") return;
+        setSocialAiInsights([]);
+        setSocialAiMeta({ live: false, timestamp: null });
+        setSocialAiError(err.message || "Failed to load AI social insights");
       } finally {
         setSocialAiLoading(false);
       }
     };
 
-    loadSocialAI();
-  }, [metrics]);
+    // small debounce (prevents spam when metrics change rapidly)
+    const t = setTimeout(loadSocialAI, 200);
+
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
+  }, [metricsKey]);
 
   const finalLoading = socialAiLoading || loading;
   const finalError = socialAiError || error;
+
+  // Prefer AI insights if available, else fallback to context combined insights
   const finalInsights =
     socialAiInsights && socialAiInsights.length > 0
       ? socialAiInsights
-      : socialInsights || [];
+      : Array.isArray(insights)
+      ? insights
+      : [];
 
-  // ------------ PDF Download with logos from assets ------------
+  // ------------ PDF Download with logos + AI meta ------------
   const handleDownloadSocialReport = () => {
     const doc = new jsPDF();
 
-    // Helper to add the text body (metrics + insights)
     const addBody = (startY = 40) => {
       let y = startY;
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(18);
       doc.text("AfricaESG.AI – ESG Social Progress", 14, y);
-      y += 10;
+      y += 8;
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
+
+      const aiLabel = socialAiMeta.live ? "LIVE AI" : "Fallback";
+      const aiTime = socialAiMeta.timestamp ? ` (${socialAiMeta.timestamp})` : "";
+      doc.text(`AI Mode: ${aiLabel}${aiTime}`, 14, y);
+      y += 8;
 
       const addLine = (label, val) => {
         const line = `${label}: ${val}`;
@@ -356,43 +391,35 @@ export default function SocialCategory() {
       };
 
       addLine("Supplier Diversity (%)", supplierDiversity.toFixed(1));
-      addLine(
-        "Employee Engagement (0–100)",
-        employeeEngagement.toFixed(1)
-      );
+      addLine("Employee Engagement (0–100)", employeeEngagement.toFixed(1));
       addLine(
         "Community Engagement (% of revenue – proxy)",
         communityEngagementRevenuePct.toFixed(1)
       );
       addLine("Community Programmes Index", communityPrograms);
 
-      if (finalInsights.length > 0) {
+      if ((finalInsights || []).length > 0) {
         y += 10;
         doc.setFont("helvetica", "bold");
         doc.setFontSize(12);
         doc.text("AI Social Insights", 14, y);
-        y += 10;
+        y += 8;
 
         doc.setFont("helvetica", "normal");
         doc.setFontSize(10);
-        finalInsights.forEach((insight, idx) => {
-          const lines = doc.splitTextToSize(
-            `${idx + 1}. ${insight}`,
-            180
-          );
+        (finalInsights || []).forEach((insight, idx) => {
+          const lines = doc.splitTextToSize(`${idx + 1}. ${insight}`, 180);
           doc.text(lines, 14, y);
           y += lines.length * 5 + 2;
         });
       }
     };
 
-    // If we have logos in assets, draw them first, then body
     const drawWithLogos = () => {
       let logosLoaded = 0;
-      const totalLogos = 2; // africaESGLogo + clientLogo (you can set to 1 if you only use one)
+      const totalLogos = 2;
 
       const onAllLoaded = () => {
-        // Body starts lower because header has logos
         addBody(40);
         doc.save("AfricaESG_Social_Report.pdf");
       };
@@ -404,7 +431,6 @@ export default function SocialCategory() {
 
       logoPositions.forEach((logo) => {
         if (!logo.src) {
-          // If a logo path is missing, count it as loaded and continue
           logosLoaded += 1;
           if (logosLoaded === totalLogos) onAllLoaded();
           return;
@@ -413,12 +439,15 @@ export default function SocialCategory() {
         const img = new Image();
         img.src = logo.src;
         img.onload = () => {
-          doc.addImage(img, "PNG", logo.x, logo.y, logo.w, logo.h);
+          try {
+            doc.addImage(img, "PNG", logo.x, logo.y, logo.w, logo.h);
+          } catch {
+            // ignore logo failure
+          }
           logosLoaded += 1;
           if (logosLoaded === totalLogos) onAllLoaded();
         };
         img.onerror = () => {
-          // Skip failed logo, still continue
           logosLoaded += 1;
           if (logosLoaded === totalLogos) onAllLoaded();
         };
@@ -426,10 +455,8 @@ export default function SocialCategory() {
     };
 
     try {
-      // Try with logos from assets
       drawWithLogos();
     } catch (e) {
-      // Fallback: text-only report
       addBody(20);
       doc.save("AfricaESG_Social_Report.pdf");
     }
@@ -467,8 +494,8 @@ export default function SocialCategory() {
                 </h2>
                 <p className="mt-3 text-sm text-slate-600 max-w-3xl">
                   Snapshot of your human rights, people, supply chain and
-                  community performance, inspired by the company ESG
-                  disclosures but tailored to AfricaESG.AI dataset.
+                  community performance, inspired by the company ESG disclosures
+                  but tailored to AfricaESG.AI dataset.
                 </p>
               </section>
 
@@ -610,9 +637,7 @@ export default function SocialCategory() {
                   <ul className="list-disc list-inside text-xs text-slate-600 space-y-1">
                     <li>Focus on workplace injury prevention.</li>
                     <li>Safety leadership and training programmes.</li>
-                    <li>
-                      Integration of safety into product and service design.
-                    </li>
+                    <li>Integration of safety into product and service design.</li>
                   </ul>
                 </div>
 
@@ -630,22 +655,25 @@ export default function SocialCategory() {
                       {communityEngagementRevenuePct.toFixed(1)}% revenue
                     </span>
                   </p>
-                  <ProgressBar
-                    value={communityEngagementRevenuePct * 10}
-                  />
+                  <ProgressBar value={communityEngagementRevenuePct * 10} />
                 </div>
               </section>
             </div>
 
             {/* Right: AI Insights Panel */}
             <aside className="bg-white rounded-3xl shadow border border-slate-200 p-5 flex flex-col h-full">
-              <h2 className="text-lg font-semibold text-slate-900">
-                ESG Social – AI Narrative
-              </h2>
-              <p className="text-xs text-slate-500 mt-1 mb-3">
-                Generated commentary based on your uploaded ESG social metrics,
-                mirroring the narrative style of listed-company ESG reports.
-              </p>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">
+                    ESG Social – AI Narrative
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1 mb-3">
+                    Generated commentary based on your uploaded ESG social metrics,
+                    mirroring the narrative style of listed-company ESG reports.
+                  </p>
+                </div>
+                <LiveBadge live={socialAiMeta.live} timestamp={socialAiMeta.timestamp} />
+              </div>
 
               <div className="flex-1 min-h-0">
                 {finalLoading && (
@@ -763,16 +791,8 @@ export default function SocialCategory() {
                         <YAxis />
                         <Tooltip content={<CustomTooltip />} />
                         <Legend />
-                        <Bar
-                          dataKey="initial"
-                          name="Initial Audit"
-                          fill="#1d4ed8"
-                        />
-                        <Bar
-                          dataKey="final"
-                          name="Final Audit"
-                          fill="#60a5fa"
-                        />
+                        <Bar dataKey="initial" name="Initial Audit" fill="#1d4ed8" />
+                        <Bar dataKey="final" name="Final Audit" fill="#60a5fa" />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -797,9 +817,7 @@ export default function SocialCategory() {
                             <Cell
                               key={entry.name}
                               fill={
-                                COMMUNITY_COLORS[
-                                  index % COMMUNITY_COLORS.length
-                                ]
+                                COMMUNITY_COLORS[index % COMMUNITY_COLORS.length]
                               }
                             />
                           ))}
@@ -831,7 +849,6 @@ export default function SocialCategory() {
             </section>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-              {/* Human rights + saliency text */}
               <div className="xl:col-span-2 space-y-4">
                 <div className="bg-white rounded-3xl border border-slate-200 p-6">
                   <h3 className="text-lg font-semibold text-slate-900">
@@ -843,22 +860,11 @@ export default function SocialCategory() {
                     chain.
                   </p>
                   <ul className="mt-3 list-disc list-inside text-xs text-slate-600 space-y-1">
-                    <li>
-                      Protect and respect human rights in all activities.
-                    </li>
-                    <li>
-                      Promote health, safety and wellbeing of workers.
-                    </li>
-                    <li>
-                      Foster inclusion and fair treatment for everyone.
-                    </li>
-                    <li>
-                      Support a just transition in affected communities.
-                    </li>
-                    <li>
-                      Partner with communities and stakeholders on shared
-                      priorities.
-                    </li>
+                    <li>Protect and respect human rights in all activities.</li>
+                    <li>Promote health, safety and wellbeing of workers.</li>
+                    <li>Foster inclusion and fair treatment for everyone.</li>
+                    <li>Support a just transition in affected communities.</li>
+                    <li>Partner with communities and stakeholders on shared priorities.</li>
                   </ul>
 
                   <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50/40 px-4 py-3">
@@ -866,18 +872,9 @@ export default function SocialCategory() {
                       Sustainability Aspirations (Examples)
                     </p>
                     <ul className="list-disc list-inside text-[11px] text-slate-700 space-y-1">
-                      <li>
-                        Human Rights: source from suppliers with robust human
-                        rights controls.
-                      </li>
-                      <li>
-                        Safety: aim for continuous reduction in workplace
-                        incidents.
-                      </li>
-                      <li>
-                        Diversity, Equity & Inclusion: build a respectful,
-                        inclusive culture where every person is valued.
-                      </li>
+                      <li>Human Rights: source from suppliers with robust human rights controls.</li>
+                      <li>Safety: aim for continuous reduction in workplace incidents.</li>
+                      <li>DEI: build a respectful, inclusive culture where every person is valued.</li>
                     </ul>
                   </div>
                 </div>
@@ -891,20 +888,14 @@ export default function SocialCategory() {
                     risks, and link them to your metrics and action plans.
                   </p>
                   <ul className="mt-3 list-disc list-inside text-xs text-slate-600 space-y-1">
-                    <li>
-                      Identify high-risk issues across operations and value
-                      chain.
-                    </li>
-                    <li>
-                      Prioritise topics with the greatest potential impact.
-                    </li>
+                    <li>Identify high-risk issues across operations and value chain.</li>
+                    <li>Prioritise topics with the greatest potential impact.</li>
                     <li>Validate with stakeholders and experts.</li>
                     <li>Report annually on progress and outcomes.</li>
                   </ul>
                 </div>
               </div>
 
-              {/* Right: numeric + engagement index */}
               <div className="space-y-4">
                 <div className="bg-white rounded-3xl border border-emerald-100 p-5">
                   <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wide mb-1">
@@ -943,9 +934,7 @@ export default function SocialCategory() {
                               <Cell
                                 key={index}
                                 fill={
-                                  ENGAGED_COLORS[
-                                    index % ENGAGED_COLORS.length
-                                  ]
+                                  ENGAGED_COLORS[index % ENGAGED_COLORS.length]
                                 }
                               />
                             ))}
@@ -979,7 +968,6 @@ export default function SocialCategory() {
             </section>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-              {/* left: community engagement */}
               <div className="xl:col-span-2 space-y-4">
                 <div className="bg-white rounded-3xl border border-slate-200 p-6">
                   <h3 className="text-lg font-semibold text-slate-900">
@@ -991,17 +979,9 @@ export default function SocialCategory() {
                     value projects.
                   </p>
                   <ul className="mt-3 list-disc list-inside text-xs text-slate-600 space-y-1">
-                    <li>
-                      Multi-year community programmes aligned with local needs.
-                    </li>
-                    <li>
-                      Partnerships with NGOs, social enterprises and community
-                      organisations.
-                    </li>
-                    <li>
-                      Employee volunteering and skills-based support for
-                      community projects.
-                    </li>
+                    <li>Multi-year community programmes aligned with local needs.</li>
+                    <li>Partnerships with NGOs and community organisations.</li>
+                    <li>Employee volunteering and skills-based support.</li>
                   </ul>
 
                   <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
@@ -1009,9 +989,7 @@ export default function SocialCategory() {
                       <p className="font-semibold text-sky-800 uppercase">
                         Community Index
                       </p>
-                      <p className="text-slate-900 text-lg">
-                        {communityPrograms}
-                      </p>
+                      <p className="text-slate-900 text-lg">{communityPrograms}</p>
                     </div>
                     <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 px-3 py-2">
                       <p className="font-semibold text-emerald-800 uppercase">
@@ -1025,9 +1003,7 @@ export default function SocialCategory() {
                       <p className="font-semibold text-indigo-800 uppercase">
                         Stakeholder Score
                       </p>
-                      <p className="text-slate-900 text-lg">
-                        {stakeholderSurveyScore}
-                      </p>
+                      <p className="text-slate-900 text-lg">{stakeholderSurveyScore}</p>
                     </div>
                   </div>
                 </div>
@@ -1042,18 +1018,12 @@ export default function SocialCategory() {
                   </p>
                   <ul className="mt-3 list-disc list-inside text-xs text-slate-600 space-y-1">
                     <li>Identify projects that may affect Indigenous lands.</li>
-                    <li>
-                      Engage early and seek free, prior and informed consent.
-                    </li>
-                    <li>
-                      Build long-term relationships through co-created
-                      programmes and benefit sharing.
-                    </li>
+                    <li>Engage early and seek FPIC where relevant.</li>
+                    <li>Build long-term relationships through co-created programmes.</li>
                   </ul>
                 </div>
               </div>
 
-              {/* right: investment mix + proxies */}
               <div className="space-y-4">
                 <div className="bg-white rounded-3xl border border-slate-200 p-5">
                   <h4 className="text-xs font-semibold text-sky-800 uppercase mb-2">
@@ -1076,9 +1046,7 @@ export default function SocialCategory() {
                               <Cell
                                 key={index}
                                 fill={
-                                  COMMUNITY_COLORS[
-                                    index % COMMUNITY_COLORS.length
-                                  ]
+                                  COMMUNITY_COLORS[index % COMMUNITY_COLORS.length]
                                 }
                               />
                             ))}
@@ -1113,8 +1081,7 @@ export default function SocialCategory() {
                     {supplierSurveyScore}
                   </p>
                   <p className="text-[11px] text-blue-700 mt-1">
-                    Reflects supplier experience of your social and community
-                    commitments.
+                    Reflects supplier experience of your social and community commitments.
                   </p>
                 </div>
               </div>

@@ -1,3 +1,4 @@
+// src/pages/Dashboard.jsx
 import React, { useEffect, useState, useContext, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -17,31 +18,17 @@ import {
   FaEdit,
   FaCheck,
   FaTimes,
-  FaChartLine,
-  FaBolt,
-  FaLeaf,
-  FaWater,
-  FaRecycle,
 } from "react-icons/fa";
 import { jsPDF } from "jspdf";
 import { API_BASE_URL } from "../config/api";
 import { SimulationContext } from "../context/SimulationContext";
 
-// ✅ Check if logos exist before importing
-let MainLogo, SecondaryLogo;
-try {
-  MainLogo = require("../assets/AfricaESG.AI.png");
-} catch (e) {
-  console.warn("Main logo not found:", e);
-  MainLogo = null;
-}
+// ✅ Logo imports
+import MainLogoSrc from "../assets/AfricaESG.AI.png";
+import SecondaryLogoSrc from "../assets/ethekwin.png";
 
-try {
-  SecondaryLogo = require("../assets/ethekwin.png");
-} catch (e) {
-  console.warn("Secondary logo not found:", e);
-  SecondaryLogo = null;
-}
+const MainLogo = MainLogoSrc || null;
+const SecondaryLogo = SecondaryLogoSrc || null;
 
 // ---------- Company Name Helper Functions ----------
 const getCompanyNameFromFilename = (filename) => {
@@ -72,104 +59,51 @@ const extractInvoiceDataFromSimulation = (simulation) => {
 
   if (envMetrics.uploadedRows && envMetrics.uploadedRows.length > 0) {
     const sampleRow = envMetrics.uploadedRows[0] || {};
-    const hasInvoiceFields = Object.keys(sampleRow).some((key) =>
-      key.toLowerCase().includes("kwh") ||
-      key.toLowerCase().includes("electricity") ||
-      key.toLowerCase().includes("energy") ||
-      key.toLowerCase().includes("consumption") ||
-      key.toLowerCase().includes("bill") ||
-      key.toLowerCase().includes("invoice")
+    const hasInvoiceFields = Object.keys(sampleRow).some(
+      (key) =>
+        key.toLowerCase().includes("kwh") ||
+        key.toLowerCase().includes("electricity") ||
+        key.toLowerCase().includes("energy") ||
+        key.toLowerCase().includes("consumption") ||
+        key.toLowerCase().includes("bill") ||
+        key.toLowerCase().includes("invoice")
     );
 
-    if (hasInvoiceFields) {
-      return envMetrics.uploadedRows;
-    }
+    if (hasInvoiceFields) return envMetrics.uploadedRows;
   }
 
   return null;
 };
 
-// ---------- Invoice Utility Functions ----------
-const getLastSixInvoices = (invoices) => {
-  if (!invoices || !Array.isArray(invoices)) return [];
-  return invoices.slice(0, 6);
+// ---------- Emissions helper ----------
+const calculateEmissionsTonnes = (energyKwh) => {
+  // Align with backend: estimated_co2 = total_energy * 0.99 / 1000 (tCO2e)
+  const kwh = Number(energyKwh || 0);
+  return (kwh * 0.99) / 1000;
 };
 
-const computeInvoiceEnergyAndCarbon = (invoices) => {
-  if (!invoices || !Array.isArray(invoices)) {
-    return { totalEnergyKwh: 0, totalCarbonTonnes: 0 };
-  }
+// ✅ Safe image -> Base64 loader for jsPDF
+const loadImage = async (src) => {
+  if (!src) throw new Error("No image source provided");
 
-  let totalEnergyKwh = 0;
-  let totalCarbonTonnes = 0;
+  const response = await fetch(src);
+  const blob = await response.blob();
 
-  invoices.forEach((invoice) => {
-    const energyFields = ["kwh", "electricity", "energy", "consumption", "usage"];
-    for (const field of energyFields) {
-      if (invoice[field] !== undefined && invoice[field] !== null) {
-        const value = parseFloat(invoice[field]);
-        if (!isNaN(value)) {
-          totalEnergyKwh += value;
-          break;
-        }
-      }
-    }
-
-    if (invoice.carbon_emissions !== undefined && invoice.carbon_emissions !== null) {
-      const carbon = parseFloat(invoice.carbon_emissions);
-      if (!isNaN(carbon)) {
-        totalCarbonTonnes += carbon;
-      }
-    } else {
-      const emissionFactor = 0.00085; // tCO2/kWh
-      totalCarbonTonnes += totalEnergyKwh * emissionFactor;
-    }
-  });
-
-  return { totalEnergyKwh, totalCarbonTonnes };
-};
-
-const calculateEnergyIntensity = (totalEnergy, revenue) => {
-  if (!revenue || revenue === 0) return 0;
-  return totalEnergy / revenue;
-};
-
-const calculateCarbonIntensity = (totalCarbon, revenue) => {
-  if (!revenue || revenue === 0) return 0;
-  return totalCarbon / revenue;
-};
-
-const calculateEmissions = (energyKwh, fuelType = "electricity") => {
-  const emissionFactors = {
-    electricity: 0.85,
-    diesel: 2.68,
-    petrol: 2.31,
-    natural_gas: 0.2,
-    coal: 2.9,
-  };
-
-  const factor = emissionFactors[fuelType.toLowerCase()] || emissionFactors.electricity;
-  return energyKwh * factor;
-};
-
-// ✅ Safe image loader for PDF
-const loadImage = (src) => {
-  if (!src) return Promise.reject(new Error("No image source provided"));
-  
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
-    img.src = src;
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result); // Base64 data URL
+    reader.onerror = () => reject(new Error(`Failed to convert image: ${src}`));
+    reader.readAsDataURL(blob);
   });
 };
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const simulation = useContext(SimulationContext);
-  const environmentalMetrics = simulation?.environmentalMetrics;
 
+  // ✅ keep pulling from SimulationContext (do NOT change)
+  const socialMetricsFromContext = simulation?.socialMetrics; // ✅ populated by SocialCategory
+  const governanceMetricsFromContext = simulation?.governanceMetrics; // ✅ populated by GovernanceCategory
   const invoiceData = useMemo(
     () => extractInvoiceDataFromSimulation(simulation),
     [simulation]
@@ -179,23 +113,12 @@ export default function Dashboard() {
   const [isEditingCompany, setIsEditingCompany] = useState(false);
   const [tempCompanyName, setTempCompanyName] = useState("");
 
+  // ✅ invoice-derived baseline metrics for calculations
   const [invoiceMetrics, setInvoiceMetrics] = useState({
     totalEnergyKwh: 0,
     totalCarbonTonnes: 0,
     monthlyAverage: 0,
     peakConsumption: 0,
-    costSavingsPotential: 0,
-    renewablePercentage: 0,
-    waterConsumption: 0,
-    wasteGenerated: 0,
-    energyIntensity: 0,
-    carbonIntensity: 0,
-  });
-
-  const [esgSummary, setEsGSummary] = useState({
-    environmental: "Energy: -- kWh · Renewables: --% · Carbon: -- tCO₂e",
-    social: "Supplier diversity: --% · Customer satisfaction: --% · Human capital: --%",
-    governance: "Corporate governance: -- · ISO 9001: -- · Ethics: --",
   });
 
   const [summaryData, setSummaryData] = useState({
@@ -227,7 +150,7 @@ export default function Dashboard() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState(null);
 
-  const [platformStats, setPlatformStats] = useState({
+  const [platformStats] = useState({
     countries_supported: 50,
     esg_reports_generated: 10000,
     compliance_accuracy: 0.99,
@@ -236,101 +159,11 @@ export default function Dashboard() {
 
   const [redFlags, setRedFlags] = useState([]);
 
-  // ---------- Process Invoice Data from EnvironmentalCategory ----------
-  useEffect(() => {
-    const processInvoiceData = () => {
-      if (!invoiceData || invoiceData.length === 0) return;
-
-      let totalEnergy = 0;
-      let totalCost = 0;
-      let peakConsumption = 0;
-      let monthlyData = {};
-      let waterConsumption = 0;
-      let wasteGenerated = 0;
-
-      invoiceData.forEach((item) => {
-        const energy = extractNumericValue(item, [
-          "kwh",
-          "electricity",
-          "energy",
-          "consumption",
-        ]);
-        if (energy) {
-          totalEnergy += energy;
-          peakConsumption = Math.max(peakConsumption, energy);
-
-          const date = extractDate(item);
-          if (date) {
-            const monthKey = `${date.getFullYear()}-${date.getMonth() + 1}`;
-            monthlyData[monthKey] = (monthlyData[monthKey] || 0) + energy;
-          }
-        }
-
-        const cost = extractNumericValue(item, ["cost", "amount", "total", "price"]);
-        if (cost) totalCost += cost;
-
-        const water = extractNumericValue(item, [
-          "water",
-          "water_usage",
-          "water_consumption",
-        ]);
-        if (water) waterConsumption += water;
-
-        const waste = extractNumericValue(item, [
-          "waste",
-          "waste_generated",
-          "landfill",
-        ]);
-        if (waste) wasteGenerated += waste;
-      });
-
-      const monthlyAverage =
-        Object.values(monthlyData).length > 0
-          ? Object.values(monthlyData).reduce((a, b) => a + b, 0) /
-            Object.values(monthlyData).length
-          : totalEnergy / (invoiceData.length || 1);
-
-      const carbonEmissions = calculateEmissions(totalEnergy, "electricity");
-
-      const revenue = 1000000;
-      const energyIntensity = calculateEnergyIntensity(totalEnergy, revenue);
-      const carbonIntensity = calculateCarbonIntensity(carbonEmissions, revenue);
-
-      const costSavingsPotential = totalCost * 0.1;
-
-      const renewableEnergy = extractRenewableEnergy(invoiceData);
-      const renewablePercentage =
-        renewableEnergy > 0 ? (renewableEnergy / totalEnergy) * 100 : 0;
-
-      setInvoiceMetrics({
-        totalEnergyKwh: totalEnergy,
-        totalCarbonTonnes: carbonEmissions / 1000,
-        monthlyAverage,
-        peakConsumption,
-        costSavingsPotential,
-        renewablePercentage,
-        waterConsumption,
-        wasteGenerated,
-        energyIntensity,
-        carbonIntensity,
-      });
-
-      updateEsgSummaryWithInvoiceData({
-        totalEnergy,
-        carbonEmissions,
-        renewablePercentage,
-        waterConsumption,
-        wasteGenerated,
-      });
-    };
-
-    processInvoiceData();
-  }, [invoiceData]);
-
+  // ---------- Helpers ----------
   const extractNumericValue = (item, fieldNames) => {
     for (const fieldName of fieldNames) {
       for (const key in item) {
-        if (key.toLowerCase().includes(fieldName)) {
+        if (key.toLowerCase().includes(String(fieldName).toLowerCase())) {
           const value = item[key];
           if (typeof value === "number") return value;
           if (typeof value === "string") {
@@ -352,7 +185,7 @@ export default function Dashboard() {
           if (value) {
             try {
               return new Date(value);
-            } catch (e) {
+            } catch {
               const dateMatch = String(value).match(/\d{4}[-\/]\d{1,2}[-\/]\d{1,2}/);
               if (dateMatch) return new Date(dateMatch[0]);
             }
@@ -363,165 +196,109 @@ export default function Dashboard() {
     return new Date();
   };
 
-  const extractRenewableEnergy = (invoiceData) => {
-    let totalRenewable = 0;
+  // ---------- Process Invoice Data (for KPI calculations) ----------
+  useEffect(() => {
+    if (!invoiceData || !Array.isArray(invoiceData) || invoiceData.length === 0) return;
+
+    let totalEnergy = 0;
+    let peak = 0;
+    const monthly = {};
+
     invoiceData.forEach((item) => {
-      const renewableFields = [
-        "renewable",
-        "solar",
-        "wind",
-        "hydro",
-        "green_energy",
-      ];
-      for (const fieldName of renewableFields) {
-        for (const key in item) {
-          if (key.toLowerCase().includes(fieldName)) {
-            const value = item[key];
-            if (typeof value === "number") {
-              totalRenewable += value;
-            } else if (typeof value === "string") {
-              const num = parseFloat(value.replace(/[^\d.-]/g, ""));
-              if (!isNaN(num)) totalRenewable += num;
-            }
-          }
-        }
+      const energy = extractNumericValue(item, [
+        "total_energy_kwh",
+        "energy_kwh",
+        "kwh",
+        "electricity",
+        "energy",
+        "consumption",
+      ]);
+
+      if (energy) {
+        totalEnergy += energy;
+        peak = Math.max(peak, energy);
+
+        const d = extractDate(item);
+        const monthKey = `${d.getFullYear()}-${d.getMonth() + 1}`;
+        monthly[monthKey] = (monthly[monthKey] || 0) + energy;
       }
     });
-    return totalRenewable;
-  };
 
-  const updateEsgSummaryWithInvoiceData = (data) => {
-    const newSummary = {
-      environmental: `Energy: ${data.totalEnergy.toLocaleString()} kWh · Renewables: ${data.renewablePercentage.toFixed(
-        1
-      )}% · Carbon: ${(data.carbonEmissions / 1000).toLocaleString()} tCO₂e`,
-    };
+    const monthVals = Object.values(monthly);
+    const monthlyAverage =
+      monthVals.length > 0 ? monthVals.reduce((a, b) => a + b, 0) / monthVals.length : 0;
 
-    setEsGSummary((prev) => ({
-      environmental: newSummary.environmental,
-      social: prev.social,
-      governance: prev.governance,
-    }));
+    const carbonTonnes = calculateEmissionsTonnes(totalEnergy);
 
-    setSummaryData((prev) => ({
-      ...prev,
-      environmental: {
-        ...prev.environmental,
-        totalEnergyConsumption: data.totalEnergy,
-        carbonEmissions: data.carbonEmissions / 1000,
-        renewableEnergyShare: data.renewablePercentage,
-        waterConsumption: data.waterConsumption,
-        wasteGenerated: data.wasteGenerated,
-      },
-    }));
-  };
+    setInvoiceMetrics({
+      totalEnergyKwh: totalEnergy,
+      totalCarbonTonnes: carbonTonnes,
+      monthlyAverage,
+      peakConsumption: peak,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceData]);
 
-  // ---------- Company Name Management ----------
-  const handleCompanyNameEdit = () => {
-    if (isEditingCompany && tempCompanyName.trim()) {
-      const newName = tempCompanyName.trim();
-      setCompanyName(newName);
-      localStorage.setItem("companyName", newName);
-      setIsEditingCompany(false);
-    } else {
-      setTempCompanyName(companyName || "");
-      setIsEditingCompany(true);
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setIsEditingCompany(false);
-    setTempCompanyName("");
-  };
-
-  // ✅ FIXED: Remove non-existent API endpoint call
-  const handleCompanyNameSave = () => {
-    if (!tempCompanyName.trim()) return;
-
-    const newName = tempCompanyName.trim();
-    setCompanyName(newName);
-    localStorage.setItem("companyName", newName);
-
-    // Only save to localStorage, no API call since endpoint doesn't exist
-    console.log("Company name saved locally:", newName);
-
-    setIsEditingCompany(false);
-  };
-
+  // ✅ calculate Carbon Tax / Allowances / Credits / Savings (keep layout unchanged)
   useEffect(() => {
-    const extractCompanyName = () => {
-      if (invoiceData && invoiceData.length > 0) {
-        const sample = invoiceData[0];
+    const energyKwh = Number(invoiceMetrics.totalEnergyKwh || 0);
+    const emissionsT = Number(invoiceMetrics.totalCarbonTonnes || 0);
 
-        const companyFields = [
-          "company",
-          "company_name",
-          "client",
-          "client_name",
-          "customer",
-          "customer_name",
-        ];
-        for (const field of companyFields) {
-          if (sample[field] && typeof sample[field] === "string") {
-            const name = sample[field].trim();
-            if (name && name !== "—" && name !== "Company Name") {
-              return name;
-            }
-          }
-        }
+    if (!energyKwh && !emissionsT) return;
 
-        for (const key in sample) {
-          if (
-            key.toLowerCase().includes("company") ||
-            key.toLowerCase().includes("client") ||
-            key.toLowerCase().includes("customer")
-          ) {
-            const value = sample[key];
-            if (typeof value === "string" && value.trim() && !value.match(/^\d+$/)) {
-              return value.trim();
-            }
-          }
-        }
-      }
+    // Simplified SA carbon tax model (illustrative)
+    const CARBON_TAX_RATE = 190; // R / tCO2e
+    const ALLOWANCE_RATE = 0.7; // 70%
 
-      const savedCompany = localStorage.getItem("companyName");
-      if (savedCompany && savedCompany.trim() && savedCompany.trim() !== "Company Name") {
-        return savedCompany.trim();
-      }
+    // Baseline proxy = 10% higher than current (replace with real baseline when available)
+    const baselineEnergyKwh = energyKwh > 0 ? energyKwh * 1.1 : 0;
+    const baselineEmissionsT = calculateEmissionsTonnes(baselineEnergyKwh);
+    const actualEmissionsT = emissionsT > 0 ? emissionsT : calculateEmissionsTonnes(energyKwh);
 
-      return "";
-    };
+    const taxableEmissionsT = Math.max(0, actualEmissionsT * (1 - ALLOWANCE_RATE));
+    const carbonTaxValue = taxableEmissionsT * CARBON_TAX_RATE;
 
-    const name = extractCompanyName();
-    if (name) {
-      setCompanyName(name);
-      localStorage.setItem("companyName", name);
-    }
-  }, [invoiceData, summaryData, environmentalMetrics]);
+    const allowanceValue = Math.max(0, actualEmissionsT * ALLOWANCE_RATE * CARBON_TAX_RATE);
+
+    const energySavedKwh = Math.max(0, baselineEnergyKwh - energyKwh);
+    const creditsT = Math.max(0, baselineEmissionsT - actualEmissionsT);
+
+    // ✅ robust "previous" tracking (prevents stale prev values)
+    setCarbonTax((current) => {
+      setPrevCarbonTax(current);
+      return Math.round(carbonTaxValue);
+    });
+
+    setTaxAllowances((current) => {
+      setPrevTaxAllowances(current);
+      return Math.round(allowanceValue);
+    });
+
+    setCarbonCredits((current) => {
+      setPrevCarbonCredits(current);
+      return Number(creditsT.toFixed(2));
+    });
+
+    setEnergySavings((current) => {
+      setPrevEnergySavings(current);
+      return Math.round(energySavedKwh);
+    });
+  }, [invoiceMetrics.totalEnergyKwh, invoiceMetrics.totalCarbonTonnes]);
 
   // ---------- Trend indicator ----------
   const renderIndicator = (current, previous) => {
-    if (previous === null || previous === undefined) {
-      return <div className="h-5" />;
-    }
+    if (previous === null || previous === undefined) return <div className="h-5" />;
 
     const diff = current - previous;
-    const pctChange =
-      previous === 0 ? (current === 0 ? 0 : 100) : (diff / previous) * 100;
+    const pctChange = previous === 0 ? (current === 0 ? 0 : 100) : (diff / previous) * 100;
 
     const formatted = (diff > 0 ? "+" : "") + pctChange.toFixed(1) + "%";
     const isUp = diff > 0;
     const isDown = diff < 0;
-    const color = isUp
-      ? "text-emerald-600"
-      : isDown
-      ? "text-red-600"
-      : "text-gray-500";
+    const color = isUp ? "text-emerald-600" : isDown ? "text-red-600" : "text-gray-500";
 
     return (
-      <div
-        className={`flex items-center gap-1 text-[11px] font-semibold ${color} h-5`}
-      >
+      <div className={`flex items-center gap-1 text-[11px] font-semibold ${color} h-5`}>
         {isUp && (
           <svg width="12" height="12" viewBox="0 0 24 24" className="shrink-0">
             <path
@@ -556,289 +333,225 @@ export default function Dashboard() {
     );
   };
 
-  // ---------- Red flag rules ----------
-  const computeRedFlags = (summary, metrics, invoiceMetrics) => {
+  // ✅ Social/Governance values: prefer context values (pulling stays)
+  const socSummaryData = useMemo(() => {
+    const s = summaryData.social || {};
+    return {
+      ...s,
+      supplierDiversity:
+        s.supplierDiversity ??
+        simulation?.kpiMetrics?.supplierDiversity ??
+        socialMetricsFromContext?.supplierDiversity ??
+        socialMetricsFromContext?.supplierDiversityPct ??
+        null,
+      customerSatisfaction:
+        s.customerSatisfaction ??
+        socialMetricsFromContext?.customerSatisfaction ??
+        socialMetricsFromContext?.customer_satisfaction ??
+        null,
+      humanCapital:
+        s.humanCapital ??
+        socialMetricsFromContext?.humanCapital ??
+        socialMetricsFromContext?.employeeEngagement ??
+        socialMetricsFromContext?.employee_engagement ??
+        null,
+    };
+  }, [summaryData.social, simulation?.kpiMetrics, socialMetricsFromContext]);
+
+  const govSummaryData = useMemo(() => {
+    const g = summaryData.governance || {};
+    return {
+      ...g,
+      corporateGovernance:
+        g.corporateGovernance ??
+        governanceMetricsFromContext?.corporateGovernance ??
+        governanceMetricsFromContext?.governanceScore ??
+        governanceMetricsFromContext?.governance_score ??
+        null,
+      iso9001Compliance:
+        g.iso9001Compliance ??
+        governanceMetricsFromContext?.iso9001Compliance ??
+        governanceMetricsFromContext?.iso_9001 ??
+        null,
+      businessEthics:
+        g.businessEthics ??
+        governanceMetricsFromContext?.businessEthics ??
+        governanceMetricsFromContext?.ethicsCompliance ??
+        governanceMetricsFromContext?.ethics_compliance ??
+        null,
+    };
+  }, [summaryData.governance, governanceMetricsFromContext]);
+
+  // ---------- Red flags ----------
+  const computeRedFlags = () => {
     const flags = [];
-
-    const env = summary?.environmental ?? {};
-    const soc = summary?.social ?? {};
-    const gov = summary?.governance ?? {};
-
     const renewableShare =
-      env.renewableEnergyShare !== undefined
-        ? env.renewableEnergyShare
-        : invoiceMetrics.renewablePercentage;
+      summaryData?.environmental?.renewableEnergyShare ??
+      simulation?.kpiMetrics?.renewableEnergy ??
+      null;
 
-    if (renewableShare !== null && renewableShare < 20) {
+    if (renewableShare != null && Number(renewableShare) < 20) {
       flags.push(
-        `Renewable energy share is only ${renewableShare.toFixed(
+        `Renewable energy share is only ${Number(renewableShare).toFixed(
           1
         )}%. This is below the 20% threshold.`
       );
     }
 
-    const carbonTaxValue = metrics?.carbonTax ?? 0;
-    if (carbonTaxValue > 20000000) {
+    if (carbonTax > 20000000) {
       flags.push(
-        `Carbon tax exposure (R ${carbonTaxValue.toLocaleString()}) is above the defined risk threshold.`
+        `Carbon tax exposure (R ${carbonTax.toLocaleString()}) is above the defined risk threshold.`
       );
     }
 
-    const totalEnergy = env.totalEnergyConsumption ?? invoiceMetrics.totalEnergyKwh;
-    if (totalEnergy > 0) {
-      const savingsPct =
-        (invoiceMetrics.costSavingsPotential / (totalEnergy * 0.15)) * 100;
-      if (savingsPct > 10) {
-        flags.push(
-          `Significant cost savings potential (${savingsPct.toFixed(
-            1
-          )}%) identified from invoice analysis.`
-        );
-      }
-    }
-
-    if (invoiceMetrics.peakConsumption > invoiceMetrics.monthlyAverage * 1.5) {
+    if (
+      invoiceMetrics.peakConsumption > invoiceMetrics.monthlyAverage * 1.5 &&
+      invoiceMetrics.monthlyAverage > 0
+    ) {
       flags.push(
         `Peak energy consumption (${invoiceMetrics.peakConsumption.toLocaleString()} kWh) is significantly above monthly average.`
       );
     }
 
-    if (soc.supplierDiversity !== undefined && soc.supplierDiversity < 5) {
+    const supplierDiversity = socSummaryData.supplierDiversity;
+    if (supplierDiversity != null && Number(supplierDiversity) < 5) {
       flags.push(
-        `Supplier diversity (${soc.supplierDiversity}%) is low – this may create concentration and social risk.`
-      );
-    }
-
-    if (gov.totalComplianceFindings && gov.totalComplianceFindings > 0) {
-      flags.push(
-        `There are ${gov.totalComplianceFindings} open compliance findings – review governance actions.`
+        `Supplier diversity (${Number(supplierDiversity)}%) is low – this may create concentration and social risk.`
       );
     }
 
     return flags;
   };
 
+  useEffect(() => {
+    setRedFlags(computeRedFlags());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carbonTax, invoiceMetrics, socSummaryData, summaryData, simulation?.kpiMetrics]);
+
+  // ---------- Load base snapshot (keep existing behavior) ----------
   const applySnapshotFromBackend = (esgData) => {
     const mock = esgData?.mockData || {};
     const summary = mock.summary || {};
-    const metrics = mock.metrics || {};
 
-    const envSummary = summary.environmental || {};
-    const socSummary = summary.social || {};
-    const govSummary = summary.governance || {};
-
-    setSummaryData(summary);
-
-    if (summary.company_name) {
-      setCompanyName(summary.company_name);
-    }
-
-    setEsGSummary({
-      environmental: `Energy: ${
-        envSummary.totalEnergyConsumption ?? 0
-      } kWh · Renewables: ${
-        envSummary.renewableEnergyShare ?? "--"
-      }% · Carbon: ${(envSummary.carbonEmissions ?? 0).toLocaleString()} tCO₂e`,
-      social: `Supplier diversity: ${
-        socSummary.supplierDiversity ?? "--"
-      }% · Customer satisfaction: ${
-        socSummary.customerSatisfaction ?? "--"
-      }% · Human capital: ${socSummary.humanCapital ?? "--"}%`,
-      governance: `Corporate governance: ${
-        govSummary.corporateGovernance ?? "--"
-      } · ISO 9001: ${govSummary.iso9001Compliance ?? "--"} · Ethics: ${
-        govSummary.businessEthics ?? "--"
-      }`,
+    setSummaryData({
+      environmental: summary.environmental || summary.environment || {},
+      social: summary.social || {},
+      governance: summary.governance || {},
     });
 
-    setPrevCarbonTax(carbonTax);
-    setPrevTaxAllowances(taxAllowances);
-    setPrevCarbonCredits(carbonCredits);
-    setPrevEnergySavings(energySavings);
+    // best-effort company name
+    const firstInvName =
+      invoiceData && invoiceData.length > 0 ? getCompanyNameFromInvoice(invoiceData[0]) : "";
+    const savedCompany = localStorage.getItem("companyName") || "";
 
-    setCarbonTax(metrics.carbonTax || 0);
-    setTaxAllowances(metrics.taxAllowances || 0);
-    setCarbonCredits(metrics.carbonCredits || 0);
-    setEnergySavings(metrics.energySavings || 0);
+    const name =
+      summary.company_name ||
+      summary.company ||
+      firstInvName ||
+      savedCompany ||
+      companyName ||
+      "";
 
-    setRedFlags(computeRedFlags(summary, metrics, invoiceMetrics));
+    if (name) {
+      setCompanyName(name);
+      localStorage.setItem("companyName", name);
+    }
 
     const combinedList = esgData?.insights || [];
-    setAIInsights(combinedList);
+    setAIInsights(Array.isArray(combinedList) ? combinedList : []);
   };
 
-  // ✅ FIXED: Only call /api/esg-data endpoint that exists
-  const loadSnapshotFromBackend = async () => {
-    setAiLoading(true);
-    setAiError(null);
-
-    try {
-      // Only call /api/esg-data (which exists in your backend)
-      console.log("Fetching ESG data from:", `${API_BASE_URL}/api/esg-data`);
-      const esgRes = await fetch(`${API_BASE_URL}/api/esg-data`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      
-      if (!esgRes.ok) {
-        if (esgRes.status === 404) {
-          console.log("API endpoint /api/esg-data not found, using fallback");
-          // Use fallback data
-          applyFallbackData();
-          return;
-        }
-        throw new Error(`API error: ${esgRes.status} ${esgRes.statusText}`);
-      }
-
-      const esgData = await esgRes.json();
-      console.log("ESG data loaded:", esgData);
-      applySnapshotFromBackend(esgData);
-      
-      // Generate mini report from the data we have
-      generateMiniReport(esgData);
-      
-    } catch (err) {
-      console.error("Error loading ESG data:", err);
-      setAiError("Failed to load ESG data. Using fallback data.");
-      applyFallbackData();
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  // ✅ Fallback data when APIs fail
-  const applyFallbackData = () => {
-    const fallbackData = {
-      mockData: {
-        summary: {
-          environmental: {
-            totalEnergyConsumption: invoiceMetrics.totalEnergyKwh || 150000,
-            carbonEmissions: invoiceMetrics.totalCarbonTonnes || 127.5,
-            renewableEnergyShare: invoiceMetrics.renewablePercentage || 15,
-          },
-          social: {
-            supplierDiversity: 45,
-            customerSatisfaction: 75,
-            humanCapital: 68,
-          },
-          governance: {
-            corporateGovernance: 82,
-            iso9001Compliance: 90,
-            businessEthics: 88,
-          },
-        },
-        metrics: {
-          carbonTax: 191250,
-          taxAllowances: 57375,
-          carbonCredits: 19.1,
-          energySavings: 18000,
-        },
-      },
-      insights: [
-        "Based on invoice analysis, renewable energy share is below 20% target.",
-        "Consider implementing solar PV to reduce grid dependency.",
-        "Peak energy consumption indicates potential for load shifting.",
-      ],
-    };
-
-    applySnapshotFromBackend(fallbackData);
-    generateMiniReport(fallbackData);
-  };
-
-  // ✅ Generate mini report from available data
   const generateMiniReport = (esgData) => {
     const env = esgData.mockData?.summary?.environmental || {};
-    const soc = esgData.mockData?.summary?.social || {};
-    const gov = esgData.mockData?.summary?.governance || {};
-    
-    const baseline = `Your company's baseline energy consumption is ${env.totalEnergyConsumption?.toLocaleString() || '--'} kWh with ${env.renewableEnergyShare || '--'}% renewable share.`;
-    
-    const benchmark = `Industry benchmark for similar companies: 25-35% renewable energy, carbon intensity below 0.15 tCO₂e/Revenue.`;
-    
-    const performance = env.renewableEnergyShare < 20 
-      ? `Your renewable energy share (${env.renewableEnergyShare || '--'}%) is below the 20% industry benchmark.`
-      : `Your renewable energy performance meets industry standards.`;
-    
+    const baseline = `Baseline energy consumption is ${
+      invoiceMetrics.totalEnergyKwh
+        ? invoiceMetrics.totalEnergyKwh.toLocaleString()
+        : env.totalEnergyConsumption?.toLocaleString() || "--"
+    } kWh with invoice-based carbon estimate of ${
+      invoiceMetrics.totalCarbonTonnes
+        ? invoiceMetrics.totalCarbonTonnes.toFixed(1)
+        : env.carbonEmissions?.toLocaleString() || "--"
+    } tCO₂e.`;
+
+    const benchmark =
+      "Indicative peer band: renewable share 20–35%, steady reductions in energy/water intensity over 3–5 years.";
+
+    const perf =
+      carbonTax > 0
+        ? `Estimated carbon tax exposure is R ${carbonTax.toLocaleString()} (after allowances).`
+        : "Performance vs benchmark will improve once a sector benchmark and denominators (revenue/production) are provided.";
+
     const recommendations = [
-      `Increase renewable energy procurement to reach 25% target.`,
-      `Implement energy efficiency measures to reduce peak consumption.`,
-      `Explore carbon offset programs for unavoidable emissions.`,
-      `Enhance supplier screening for better social performance.`,
+      "Confirm monthly baselines from invoices (energy kWh, water m³, charges) and lock the reporting boundary (sites/meters).",
+      "Implement demand management and efficiency actions at peak-consumption sites (load shifting, HVAC optimisation, VSDs).",
+      "Improve water efficiency through leak detection, metering, and reuse where feasible.",
+      "Start a renewable pathway: on-site solar PV feasibility + green procurement options.",
     ];
 
     setMiniReport({
       baseline,
       benchmark,
-      performance_vs_benchmark: performance,
+      performance_vs_benchmark: perf,
       ai_recommendations: recommendations,
     });
   };
 
+  const loadSnapshotFromBackend = async () => {
+    setAiLoading(true);
+    setAiError(null);
+
+    try {
+      const esgRes = await fetch(`${API_BASE_URL}/api/esg-data`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!esgRes.ok)
+        throw new Error(`API error: ${esgRes.status} ${esgRes.statusText}`);
+
+      const esgData = await esgRes.json();
+      applySnapshotFromBackend(esgData);
+      generateMiniReport(esgData);
+    } catch (err) {
+      console.error("Error loading ESG data:", err);
+      setAiError("Failed to load ESG data.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSnapshotFromBackend();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    const newFlags = computeRedFlags(
-      summaryData,
-      {
-        carbonTax,
-        taxAllowances,
-        carbonCredits,
-        energySavings,
-      },
-      invoiceMetrics
-    );
-
-    setRedFlags(newFlags);
-  }, [invoiceMetrics, summaryData, carbonTax, taxAllowances, carbonCredits, energySavings]);
-
-  // ---- TOTAL ENERGY (kWh) FOR DASHBOARD CARD ----
-  const dashboardEnergyKWh = useMemo(() => {
-    if (invoiceMetrics.totalEnergyKwh > 0) return invoiceMetrics.totalEnergyKwh;
-
-    if (environmentalMetrics?.uploadedRows?.length > 0) {
-      const rows = environmentalMetrics.uploadedRows;
-      const sample = rows[0] || {};
-      const candidateCols = ["Electricity (kWh)", "Energy (kWh)", "kWh"];
-      const colName =
-        candidateCols.find((c) => Object.prototype.hasOwnProperty.call(sample, c)) ||
-        null;
-
-      if (colName) {
-        return rows.reduce((sum, row) => {
-          const v = row[colName];
-          if (v == null) return sum;
-          const num =
-            typeof v === "number" ? v : parseFloat(String(v).replace(/,/g, ""));
-          return sum + (Number.isNaN(num) ? 0 : num);
-        }, 0);
-      }
+  // ---------- Company Name Management ----------
+  const handleCompanyNameEdit = () => {
+    if (isEditingCompany && tempCompanyName.trim()) {
+      const newName = tempCompanyName.trim();
+      setCompanyName(newName);
+      localStorage.setItem("companyName", newName);
+      setIsEditingCompany(false);
+    } else {
+      setTempCompanyName(companyName || "");
+      setIsEditingCompany(true);
     }
+  };
 
-    const env = summaryData.environmental || {};
-    if (env.totalEnergyConsumption != null) return env.totalEnergyConsumption;
+  const handleCancelEdit = () => {
+    setIsEditingCompany(false);
+    setTempCompanyName("");
+  };
 
-    return 0;
-  }, [invoiceMetrics.totalEnergyKwh, environmentalMetrics, summaryData]);
+  const handleCompanyNameSave = () => {
+    if (!tempCompanyName.trim()) return;
+    const newName = tempCompanyName.trim();
+    setCompanyName(newName);
+    localStorage.setItem("companyName", newName);
+    setIsEditingCompany(false);
+  };
 
-  // ---- TOTAL CARBON (tCO₂e) FOR DASHBOARD CARD ----
-  const dashboardCarbonTonnes = useMemo(() => {
-    if (invoiceMetrics.totalCarbonTonnes > 0) return invoiceMetrics.totalCarbonTonnes;
-
-    const env = summaryData.environmental || {};
-    if (env.carbonEmissions != null) return env.carbonEmissions;
-
-    return 0;
-  }, [invoiceMetrics.totalCarbonTonnes, summaryData]);
-
-  const envSummaryData = summaryData.environmental || {};
-  const socSummaryData = summaryData.social || {};
-  const govSummaryData = summaryData.governance || {};
-
-  // ✅ Download ESG Report (PDF) with safe logo handling
+  // ✅ PDF report (unchanged layout on page, only uses computed values)
   const handleGenerateReport = async () => {
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -848,17 +561,15 @@ export default function Dashboard() {
     let yPosition;
 
     try {
-      // Try to add main logo if available
       if (MainLogo) {
-        const mainImg = await loadImage(MainLogo);
-        doc.addImage(mainImg, "PNG", 14, 10, 40, 40);
+        const mainImgDataUrl = await loadImage(MainLogo);
+        doc.addImage(mainImgDataUrl, "PNG", 14, 10, 40, 40);
       }
-      
-      // Try to add secondary logo if available
+
       if (SecondaryLogo) {
         try {
-          const secondaryImg = await loadImage(SecondaryLogo);
-          doc.addImage(secondaryImg, "PNG", pageWidth - 40, 28, 25, 25);
+          const secondaryImgDataUrl = await loadImage(SecondaryLogo);
+          doc.addImage(secondaryImgDataUrl, "PNG", pageWidth - 40, 28, 25, 25);
         } catch (e) {
           console.warn("Failed to load secondary logo:", e);
         }
@@ -866,15 +577,11 @@ export default function Dashboard() {
 
       doc.setFontSize(16);
       doc.setFont("helvetica", "bold");
-      doc.text("ESG Performance Report", pageWidth / 2, 25, {
-        align: "center",
-      });
+      doc.text("ESG Performance Report", pageWidth / 2, 25, { align: "center" });
 
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
-      doc.text("Generated by AfricaESG.AI Platform", pageWidth / 2, 32, {
-        align: "center",
-      });
+      doc.text("Generated by AfricaESG.AI Platform", pageWidth / 2, 32, { align: "center" });
 
       headerBottomY = 55;
     } catch (error) {
@@ -912,98 +619,11 @@ export default function Dashboard() {
     yPosition += 7;
 
     if (invoiceData && invoiceData.length > 0) {
-      doc.text(
-        `Data Source: ${invoiceData.length} invoice records analyzed`,
-        14,
-        yPosition
-      );
+      doc.text(`Data Source: ${invoiceData.length} invoice records analyzed`, 14, yPosition);
       yPosition += 7;
     }
 
     doc.text(`Report Period: ${new Date().getFullYear()}`, 14, yPosition);
-    yPosition += 10;
-
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text("ESG Performance Summary", 14, yPosition);
-    yPosition += 8;
-
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "normal");
-    doc.text("Environmental (from Invoice Analysis):", 14, yPosition);
-    yPosition += 6;
-    doc.setFontSize(10);
-    doc.text(
-      `• Energy Consumption: ${dashboardEnergyKWh.toLocaleString()} kWh`,
-      20,
-      yPosition
-    );
-    yPosition += 5;
-    doc.text(
-      `• Renewable Energy: ${invoiceMetrics.renewablePercentage.toFixed(1)}%`,
-      20,
-      yPosition
-    );
-    yPosition += 5;
-    doc.text(
-      `• Carbon Emissions: ${dashboardCarbonTonnes.toLocaleString()} tCO₂e`,
-      20,
-      yPosition
-    );
-    yPosition += 5;
-    doc.text(
-      `• Monthly Average: ${invoiceMetrics.monthlyAverage.toLocaleString()} kWh`,
-      20,
-      yPosition
-    );
-    yPosition += 5;
-    doc.text(
-      `• Peak Consumption: ${invoiceMetrics.peakConsumption.toLocaleString()} kWh`,
-      20,
-      yPosition
-    );
-    yPosition += 8;
-
-    doc.setFontSize(11);
-    doc.text("Social:", 14, yPosition);
-    yPosition += 6;
-    doc.setFontSize(10);
-    doc.text(
-      `• Supplier Diversity: ${
-        socSummaryData.supplierDiversity != null
-          ? `${socSummaryData.supplierDiversity}%`
-          : "--"
-      }`,
-      20,
-      yPosition
-    );
-    yPosition += 5;
-    doc.text(
-      `• Customer Satisfaction: ${
-        socSummaryData.customerSatisfaction != null
-          ? `${socSummaryData.customerSatisfaction}%`
-          : "--"
-      }`,
-      20,
-      yPosition
-    );
-    yPosition += 8;
-
-    doc.setFontSize(11);
-    doc.text("Governance:", 14, yPosition);
-    yPosition += 6;
-    doc.setFontSize(10);
-    doc.text(
-      `• Corporate Governance: ${govSummaryData.corporateGovernance || "--"}`,
-      20,
-      yPosition
-    );
-    yPosition += 5;
-    doc.text(
-      `• ISO 9001 Compliance: ${govSummaryData.iso9001Compliance || "--"}`,
-      20,
-      yPosition
-    );
     yPosition += 10;
 
     doc.setFontSize(14);
@@ -1015,29 +635,11 @@ export default function Dashboard() {
     doc.setFont("helvetica", "normal");
     doc.text(`• Carbon Tax Exposure: R ${carbonTax.toLocaleString()}`, 20, yPosition);
     yPosition += 5;
-    doc.text(
-      `• Tax Allowances: R ${taxAllowances.toLocaleString()}`,
-      20,
-      yPosition
-    );
+    doc.text(`• Tax Allowances: R ${taxAllowances.toLocaleString()}`, 20, yPosition);
     yPosition += 5;
-    doc.text(
-      `• Carbon Credits: ${carbonCredits.toLocaleString()} tonnes`,
-      20,
-      yPosition
-    );
+    doc.text(`• Carbon Credits: ${carbonCredits.toLocaleString()} tonnes`, 20, yPosition);
     yPosition += 5;
-    doc.text(
-      `• Energy Savings: ${energySavings.toLocaleString()} kWh`,
-      20,
-      yPosition
-    );
-    yPosition += 5;
-    doc.text(
-      `• Cost Savings Potential: R ${invoiceMetrics.costSavingsPotential.toLocaleString()}`,
-      20,
-      yPosition
-    );
+    doc.text(`• Energy Savings: ${energySavings.toLocaleString()} kWh`, 20, yPosition);
     yPosition += 10;
 
     if (aiInsights && aiInsights.length > 0) {
@@ -1049,12 +651,11 @@ export default function Dashboard() {
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
 
-      aiInsights.slice(0, 5).forEach((insight) => {
+      aiInsights.slice(0, 6).forEach((insight) => {
         if (yPosition > pageHeight - 20) {
           doc.addPage();
           yPosition = 20;
         }
-
         const lines = doc.splitTextToSize(`• ${insight}`, pageWidth - 28);
         doc.text(lines, 20, yPosition);
         yPosition += lines.length * 5;
@@ -1063,9 +664,7 @@ export default function Dashboard() {
 
     const filename =
       reportCompanyName !== "Company Name"
-        ? `${reportCompanyName
-            .replace(/[^a-z0-9]/gi, "_")
-            .toUpperCase()}_ESG_Report_${new Date()
+        ? `${reportCompanyName.replace(/[^a-z0-9]/gi, "_").toUpperCase()}_ESG_Report_${new Date()
             .toISOString()
             .split("T")[0]}.pdf`
         : `AfricaESG_Report_${new Date().toISOString().split("T")[0]}.pdf`;
@@ -1073,15 +672,14 @@ export default function Dashboard() {
     doc.save(filename);
   };
 
+  // UI cards (keep simple + same sections)
   const StatCard = ({ icon, label, value, sub }) => (
     <div className="flex items-center gap-3 rounded-2xl bg-white border border-slate-100 shadow-sm px-4 py-3 h-full">
       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 shrink-0">
         {icon}
       </div>
       <div className="leading-tight">
-        <div className="text-xs text-slate-500 uppercase tracking-wide">
-          {label}
-        </div>
+        <div className="text-xs text-slate-500 uppercase tracking-wide">{label}</div>
         <div className="text-xl font-semibold text-slate-900">{value}</div>
         {sub && <div className="text-[11px] text-slate-500 mt-0.5">{sub}</div>}
       </div>
@@ -1107,46 +705,15 @@ export default function Dashboard() {
       </div>
 
       <div className="flex items-baseline gap-1 text-lg font-semibold text-slate-900 whitespace-nowrap tabular-nums">
-        {typeof value === "string" && value.indexOf("R ") === 0 ? (
-          <>
-            <span className="text-sm text-slate-500">R</span>
-            <span>{value.replace(/^R\s*/, "")}</span>
-          </>
-        ) : (
-          <span>{value}</span>
-        )}
+        <span>{value}</span>
       </div>
-    </div>
-  );
-
-  const InvoiceDataCard = ({ icon, label, value, unit, trend }) => (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <div className="p-2 rounded-lg bg-blue-50 text-blue-600">{icon}</div>
-          <span className="text-sm font-semibold text-gray-700">{label}</span>
-        </div>
-        {trend && (
-          <span
-            className={`text-xs font-medium px-2 py-1 rounded-full ${
-              trend > 0
-                ? "bg-red-100 text-red-800"
-                : "bg-green-100 text-green-800"
-            }`}
-          >
-            {trend > 0 ? "↑" : "↓"} {Math.abs(trend)}%
-          </span>
-        )}
-      </div>
-      <div className="text-2xl font-bold text-gray-900">{value}</div>
-      <div className="text-sm text-gray-500">{unit}</div>
     </div>
   );
 
   return (
     <div className="min-h-screen bg-lime-50 py-10 font-sans">
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-        {/* Header Row */}
+        {/* Header */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl sm:text-4xl font-extrabold text-green-900 tracking-tight">
@@ -1191,9 +758,7 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2 p-2 hover:bg-white/50 rounded-lg transition-colors mt-2">
                   <FaBuilding className="text-gray-500" />
                   <div className="flex items-center gap-3">
-                    <span className="text-lg font-semibold text-gray-700">
-                      {companyName}
-                    </span>
+                    <span className="text-lg font-semibold text-gray-700">{companyName}</span>
                     <button
                       onClick={handleCompanyNameEdit}
                       className="text-gray-400 hover:text-emerald-600 transition-colors"
@@ -1217,34 +782,18 @@ export default function Dashboard() {
               )}
             </div>
 
-            {invoiceData && invoiceData.length > 0 && (
-              <div className="mt-2 flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
-                <FaChartLine />
-                <span>
-                  Analyzing {invoiceData.length} invoice records from
-                  EnvironmentalCategory
-                </span>
-              </div>
-            )}
-
             <p className="text-sm text-gray-600 max-w-xl mt-3">
-              ESG performance overview with AI-enabled insights on carbon tax,
-              energy savings, and strategic ESG levers. Baselines are derived
-              from your latest uploaded ESG dataset and electricity invoices.
+              ESG performance overview with AI-enabled insights on carbon tax, energy savings, and strategic ESG levers.
             </p>
 
             <div className="mt-2 h-5">
               {aiLoading && (
                 <p className="text-xs text-emerald-700 flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Loading ESG metrics and live AI insights…
+                  Loading ESG metrics…
                 </p>
               )}
-              {!aiLoading && aiError && (
-                <p className="text-xs text-red-500">
-                  {aiError}
-                </p>
-              )}
+              {!aiLoading && aiError && <p className="text-xs text-red-500">{aiError}</p>}
             </div>
           </div>
 
@@ -1259,90 +808,12 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* Invoice Data Summary Section */}
-        {invoiceData && invoiceData.length > 0 && (
-          <section className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-800">
-                Invoice Data Analysis
-              </h2>
-              <span className="text-xs font-semibold px-2 py-1 rounded-full bg-blue-100 text-blue-800">
-                From EnvironmentalCategory
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-              <InvoiceDataCard
-                icon={<FaBolt />}
-                label="Total Energy"
-                value={invoiceMetrics.totalEnergyKwh.toLocaleString()}
-                unit="kWh"
-                trend={5.2}
-              />
-              <InvoiceDataCard
-                icon={<FaLeaf />}
-                label="Carbon Emissions"
-                value={invoiceMetrics.totalCarbonTonnes.toFixed(1)}
-                unit="tCO₂e"
-                trend={-2.1}
-              />
-              <InvoiceDataCard
-                icon={<FaCloud />}
-                label="Monthly Average"
-                value={invoiceMetrics.monthlyAverage.toLocaleString()}
-                unit="kWh/month"
-                trend={3.8}
-              />
-              <InvoiceDataCard
-                icon={<FaChartLine />}
-                label="Renewable Share"
-                value={`${invoiceMetrics.renewablePercentage.toFixed(1)}%`}
-                unit="of total energy"
-                trend={15.5}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <InvoiceDataCard
-                icon={<FaWater />}
-                label="Water Consumption"
-                value={invoiceMetrics.waterConsumption.toLocaleString()}
-                unit="Liters"
-                trend={-1.2}
-              />
-              <InvoiceDataCard
-                icon={<FaRecycle />}
-                label="Waste Generated"
-                value={invoiceMetrics.wasteGenerated.toLocaleString()}
-                unit="kg"
-                trend={2.3}
-              />
-              <InvoiceDataCard
-                icon={<FaIndustry />}
-                label="Energy Intensity"
-                value={invoiceMetrics.energyIntensity.toFixed(2)}
-                unit="kWh/Revenue"
-                trend={-4.7}
-              />
-              <InvoiceDataCard
-                icon={<FaTrash />}
-                label="Carbon Intensity"
-                value={invoiceMetrics.carbonIntensity.toFixed(4)}
-                unit="tCO₂e/Revenue"
-                trend={-3.2}
-              />
-            </div>
-          </section>
-        )}
-
         {/* Red Flag Panel */}
         {redFlags.length > 0 && (
           <section className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex gap-3 items-start">
             <FaExclamationTriangle className="text-red-500 mt-1 shrink-0" />
             <div>
-              <h2 className="text-sm font-semibold text-red-800 mb-1">
-                Red Flags Detected
-              </h2>
+              <h2 className="text-sm font-semibold text-red-800 mb-1">Red Flags Detected</h2>
               <ul className="list-disc list-inside text-xs sm:text-sm text-red-900 space-y-1">
                 {redFlags.map((flag, idx) => (
                   <li key={idx}>{flag}</li>
@@ -1352,12 +823,12 @@ export default function Dashboard() {
           </section>
         )}
 
-        {/* Headline stats row */}
+        {/* Headline stats row (kept) */}
         <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 items-stretch">
           <StatCard
             icon={<FaGlobeAfrica size={18} />}
             label="African countries supported"
-            value={platformStats.countries_supported + "+"}
+            value={`${platformStats.countries_supported}+`}
             sub="Regional ESG coverage"
           />
           <StatCard
@@ -1387,18 +858,9 @@ export default function Dashboard() {
               <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">
                 ESG Performance Overview
               </h2>
-              <div style={{ display: "none" }}>
-                <div className="text-right">
-                  <div className="text-sm font-semibold text-gray-700">
-                    Company: {companyName || "Company Name"}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    Report Period: {new Date().getFullYear()}
-                  </div>
-                </div>
-              </div>
             </div>
 
+            {/* Pillars row (layout kept) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 items-stretch">
               <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4 h-full flex flex-col justify-between">
                 <div>
@@ -1416,22 +878,27 @@ export default function Dashboard() {
                       View details
                     </button>
                   </div>
+
                   <ul className="text-xs sm:text-sm text-emerald-900/90 space-y-1.5">
                     <li>
                       <span className="font-semibold">Energy</span>{" "}
-                      {dashboardEnergyKWh.toLocaleString()} kWh
-                    </li>
-                    <li>
-                      <span className="font-semibold">Renewables</span>{" "}
-                      {invoiceMetrics.renewablePercentage > 0
-                        ? invoiceMetrics.renewablePercentage.toFixed(1) + "%"
-                        : envSummaryData.renewableEnergyShare != null
-                        ? envSummaryData.renewableEnergyShare + "%"
-                        : "--"}
+                      {invoiceMetrics.totalEnergyKwh
+                        ? invoiceMetrics.totalEnergyKwh.toLocaleString()
+                        : "--"}{" "}
+                      kWh
                     </li>
                     <li>
                       <span className="font-semibold">Carbon</span>{" "}
-                      {dashboardCarbonTonnes.toLocaleString()} tCO₂e
+                      {invoiceMetrics.totalCarbonTonnes
+                        ? invoiceMetrics.totalCarbonTonnes.toFixed(1)
+                        : "--"}{" "}
+                      tCO₂e
+                    </li>
+                    <li>
+                      <span className="font-semibold">Peak vs Avg</span>{" "}
+                      {invoiceMetrics.monthlyAverage > 0
+                        ? `${invoiceMetrics.peakConsumption.toLocaleString()} / ${invoiceMetrics.monthlyAverage.toLocaleString()} kWh`
+                        : "--"}
                     </li>
                   </ul>
                 </div>
@@ -1453,23 +920,24 @@ export default function Dashboard() {
                       View details
                     </button>
                   </div>
+
                   <ul className="text-xs sm:text-sm text-sky-900/90 space-y-1.5">
                     <li>
                       <span className="font-semibold">Supplier Diversity</span>{" "}
                       {socSummaryData.supplierDiversity != null
-                        ? socSummaryData.supplierDiversity + "%"
+                        ? `${socSummaryData.supplierDiversity}%`
                         : "--"}
                     </li>
                     <li>
                       <span className="font-semibold">Customer Satisfaction</span>{" "}
                       {socSummaryData.customerSatisfaction != null
-                        ? socSummaryData.customerSatisfaction + "%"
+                        ? `${socSummaryData.customerSatisfaction}%`
                         : "--"}
                     </li>
                     <li>
                       <span className="font-semibold">Human Capital</span>{" "}
                       {socSummaryData.humanCapital != null
-                        ? socSummaryData.humanCapital + "%"
+                        ? `${socSummaryData.humanCapital}%`
                         : "--"}
                     </li>
                   </ul>
@@ -1487,13 +955,12 @@ export default function Dashboard() {
                     </div>
                     <button
                       className="text-[11px] text-amber-700 font-semibold hover:underline"
-                      onClick={() =>
-                        navigate("/dashboard/governance/corporate")
-                      }
+                      onClick={() => navigate("/dashboard/governance/corporate")}
                     >
                       View details
                     </button>
                   </div>
+
                   <ul className="text-xs sm:text-sm text-amber-900/90 space-y-1.5">
                     <li>
                       <span className="font-semibold">Corporate Governance</span>{" "}
@@ -1512,33 +979,33 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Financial / carbon KPIs row */}
+            {/* Financial / carbon KPIs row (layout kept) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
               <MoneyCard
                 icon={<FaIndustry size={15} />}
                 label="Carbon Tax (2024/2025)"
-                value={"R " + carbonTax.toLocaleString()}
+                value={`R ${carbonTax.toLocaleString()}`}
                 indicator={renderIndicator(carbonTax, prevCarbonTax)}
                 isFlagged={carbonTax > 20000000}
               />
               <MoneyCard
                 icon={<FaCloud size={15} />}
                 label="Applicable Tax Allowances"
-                value={"R " + taxAllowances.toLocaleString()}
+                value={`R ${taxAllowances.toLocaleString()}`}
                 indicator={renderIndicator(taxAllowances, prevTaxAllowances)}
                 isFlagged={false}
               />
               <MoneyCard
                 icon={<FaTrash size={15} />}
                 label="Carbon Credits Generated"
-                value={carbonCredits.toLocaleString() + " tonnes"}
+                value={`${carbonCredits.toLocaleString()} tonnes`}
                 indicator={renderIndicator(carbonCredits, prevCarbonCredits)}
                 isFlagged={false}
               />
               <MoneyCard
                 icon={<FaTint size={15} />}
                 label="Energy Savings"
-                value={energySavings.toLocaleString() + " kWh"}
+                value={`${energySavings.toLocaleString()} kWh`}
                 indicator={renderIndicator(energySavings, prevEnergySavings)}
                 isFlagged={false}
               />
@@ -1546,7 +1013,7 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* AI Mini Report */}
+        {/* AI Mini Report (layout kept) */}
         <section>
           <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-1">
@@ -1557,25 +1024,17 @@ export default function Dashboard() {
                 Live AI
               </span>
             </div>
-            <p className="text-xs text-gray-500 mb-2">
-              Baseline position, benchmark band and AI recommendations based on
-              the latest ESG scores and invoice-derived energy/carbon baselines.
-            </p>
 
-            <div className="space-y-3 text-sm">
+            <div className="space-y-3 text-sm mt-3">
               <div>
-                <h3 className="font-semibold text-slate-800 mb-0.5">
-                  1. Baseline
-                </h3>
+                <h3 className="font-semibold text-slate-800 mb-0.5">1. Baseline</h3>
                 <p className="text-xs text-slate-700">
                   {miniReport.baseline || "Baseline not available yet."}
                 </p>
               </div>
 
               <div>
-                <h3 className="font-semibold text-slate-800 mb-0.5">
-                  2. Benchmark
-                </h3>
+                <h3 className="font-semibold text-slate-800 mb-0.5">2. Benchmark</h3>
                 <p className="text-xs text-slate-700">
                   {miniReport.benchmark || "Benchmark not available yet."}
                 </p>
@@ -1592,11 +1051,8 @@ export default function Dashboard() {
               </div>
 
               <div>
-                <h3 className="font-semibold text-slate-800 mb-0.5">
-                  4. AI Recommendations
-                </h3>
-                {miniReport.ai_recommendations &&
-                miniReport.ai_recommendations.length > 0 ? (
+                <h3 className="font-semibold text-slate-800 mb-0.5">4. AI Recommendations</h3>
+                {miniReport.ai_recommendations && miniReport.ai_recommendations.length > 0 ? (
                   <ul className="list-disc list-inside text-xs text-slate-700 space-y-1">
                     {miniReport.ai_recommendations.map((rec, idx) => (
                       <li key={idx}>{rec}</li>
