@@ -675,7 +675,6 @@ export default function SocialCategory() {
                     mirroring the narrative style of listed-company ESG reports.
                   </p>
                 </div>
-                <LiveBadge live={socialAiMeta.live} timestamp={socialAiMeta.timestamp} />
               </div>
 
               <div className="flex-1 min-h-0">
