@@ -13,10 +13,19 @@ export async function apiFetch(path, options = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  let res;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (fetchError) {
+    // Handle network-level errors (e.g., no internet, server unreachable)
+    console.error("Network error during fetch:", fetchError);
+    throw new Error(
+      `Network error: Unable to reach the server. Please check your internet connection and try again.`
+    );
+  }
 
   if (res.status === 401 || res.status === 403) {
     // Optional: clear invalid token

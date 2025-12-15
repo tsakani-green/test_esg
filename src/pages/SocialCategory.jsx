@@ -23,6 +23,7 @@ import {
 import { jsPDF } from "jspdf";
 import { SimulationContext } from "../context/SimulationContext";
 import { API_BASE_URL } from "../config/api";
+import { formatFetchError } from "../utils/fetchError";
 
 // import logos directly from assets (ensure these paths exist)
 import africaESGLogo from "../assets/AfricaESG.AI.png";
@@ -335,9 +336,11 @@ export default function SocialCategory() {
         });
       } catch (err) {
         if (err.name === "AbortError") return;
+        console.error("Social AI insights fetch error:", err.message);
         setSocialAiInsights([]);
         setSocialAiMeta({ live: false, timestamp: null });
-        setSocialAiError(err.message || "Failed to load AI social insights");
+        // Use formatted error message
+        setSocialAiError(formatFetchError(err));
       } finally {
         setSocialAiLoading(false);
       }

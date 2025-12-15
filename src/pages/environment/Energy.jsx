@@ -57,6 +57,7 @@ import { GiFactory, GiWaterDrop } from "react-icons/gi";
 import { motion, AnimatePresence } from "framer-motion";
 import { SimulationContext } from "../../context/SimulationContext";
 import { API_BASE_URL } from "../../config/api";
+import { formatFetchError } from "../../utils/fetchError";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -675,29 +676,7 @@ const DatabaseSaveButton = ({ onSaveToDatabase, isSaving, hasData }) => {
 
   return (
     <div className="relative">
-      <motion.button
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={handleClick}
-        disabled={isSaving || !hasData}
-        className={`inline-flex items-center gap-2 ${
-          hasData 
-            ? "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white" 
-            : "bg-gray-300 text-gray-500 cursor-not-allowed"
-        } px-4 py-2 rounded-full shadow-lg hover:shadow-xl text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
-      >
-        {isSaving ? (
-          <>
-            <FiRefreshCw className="w-4 h-4 animate-spin" />
-            Saving...
-          </>
-        ) : (
-          <>
-            <FiDatabase className="w-4 h-4" />
-            Save to Database
-          </>
-        )}
-      </motion.button>
+      
 
       {showSuccess && (
         <motion.div
@@ -1566,23 +1545,35 @@ const fetchESGData = async () => {
   try {
     console.log('Fetching ESG data from API...');
     
-    let response = await fetch(`${API_BASE_URL}/api/esg-data`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+    let response;
+    try {
+      response = await fetch(`${API_BASE_URL}/api/esg-data`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    } catch (fetchErr) {
+      // Network-level error
+      console.error('Network error fetching ESG data:', fetchErr);
+      return null;
+    }
 
     // If GET returns 405 (Method Not Allowed), try POST
     if (response.status === 405) {
       console.log('GET method not allowed, trying POST...');
-      response = await fetch(`${API_BASE_URL}/api/esg-data`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      });
+      try {
+        response = await fetch(`${API_BASE_URL}/api/esg-data`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({}),
+        });
+      } catch (fetchErr) {
+        console.error('Network error on POST attempt:', fetchErr);
+        return null;
+      }
     }
 
     if (!response.ok) {
@@ -2233,10 +2224,7 @@ export default function EnvironmentalCategory() {
         );
       } catch (err) {
         console.error("Invoice AI insights error:", err);
-        setInvoiceAiError(
-          err.message ||
-            "Failed to load AI Environmental insights for invoices."
-        );
+        setInvoiceAiError(formatFetchError(err));
       } finally {
         setInvoiceAiLoading(false);
       }
